@@ -82,7 +82,7 @@ model User {
 model Employee {
   id        String   @id @default(uuid())
   name      String
-  position  String
+  position  String   @default("Mekanik")
   email     String?
   phone     String?
   salary    Decimal  @default(0) @db.Decimal(12, 2)

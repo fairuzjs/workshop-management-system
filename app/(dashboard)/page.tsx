@@ -55,7 +55,7 @@ export default async function DashboardPage() {
         trackingToken: wo.trackingToken,
         status: wo.status,
         serviceType: wo.serviceType,
-        customerName: wo.vehicle.customer.name,
+        customerName: wo.vehicle.customer.name ?? "",
         plateNumber: wo.vehicle.plateNumber,
         employeeName: wo.employee?.name || "-",
         totalCost: Number(wo.totalCost),

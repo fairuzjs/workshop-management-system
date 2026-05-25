@@ -99,11 +99,23 @@ export default function WorkOrderDetailPage() {
   const [paymentMethod, setPaymentMethod] = useState("");
 
   const fetchWO = useCallback(async () => {
-    const res = await fetch(`/api/work-orders/${id}`);
-    const data = await res.json();
-    setWo(data);
-    setLoading(false);
-  }, [id]);
+    try {
+      const res = await fetch(`/api/work-orders/${id}`);
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+        throw new Error(`Failed to fetch work order detail: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setWo(data);
+    } catch (error) {
+      console.error("Error fetching work order detail:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [id, router]);
 
   useEffect(() => {
     fetchWO();

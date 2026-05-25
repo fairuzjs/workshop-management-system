@@ -22,6 +22,9 @@ export function proxy(request: NextRequest) {
     request.cookies.get("__Secure-authjs.session-token")?.value;
 
   if (!sessionToken) {
+    if (pathname.startsWith("/api")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);

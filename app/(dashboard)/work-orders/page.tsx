@@ -61,19 +61,31 @@ export default function WorkOrdersPage() {
 
   const fetchWorkOrders = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (statusFilter) params.set("status", statusFilter);
-    if (typeFilter) params.set("serviceType", typeFilter);
-    params.set("page", String(pagination.page));
-    params.set("limit", "20");
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (statusFilter) params.set("status", statusFilter);
+      if (typeFilter) params.set("serviceType", typeFilter);
+      params.set("page", String(pagination.page));
+      params.set("limit", "20");
 
-    const res = await fetch(`/api/work-orders?${params.toString()}`);
-    const data = await res.json();
-    setWorkOrders(data.data);
-    setPagination(data.pagination);
-    setLoading(false);
-  }, [search, statusFilter, typeFilter, pagination.page]);
+      const res = await fetch(`/api/work-orders?${params.toString()}`);
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+        throw new Error(`Failed to fetch work orders: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setWorkOrders(data.data || []);
+      setPagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });
+    } catch (error) {
+      console.error("Error fetching work orders:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [search, statusFilter, typeFilter, pagination.page, router]);
 
   useEffect(() => {
     fetchWorkOrders();
