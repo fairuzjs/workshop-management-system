@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
@@ -46,6 +47,7 @@ const methodIcon: Record<string, typeof Banknote> = {
 };
 
 export default function TransactionsPage() {
+  const router = useRouter();
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({ page: 1, limit: 20, total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
@@ -54,17 +56,29 @@ export default function TransactionsPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (methodFilter) params.set("method", methodFilter);
-    params.set("page", String(pagination.page));
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (methodFilter) params.set("method", methodFilter);
+      params.set("page", String(pagination.page));
 
-    const res = await fetch(`/api/transactions?${params}`);
-    const data = await res.json();
-    setTransactions(data.data);
-    setPagination(data.pagination);
-    setLoading(false);
-  }, [search, methodFilter, pagination.page]);
+      const res = await fetch(`/api/transactions?${params}`);
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+        throw new Error(`Failed to fetch transactions: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setTransactions(data.data || []);
+      setPagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [search, methodFilter, pagination.page, router]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

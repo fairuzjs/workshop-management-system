@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -38,6 +39,7 @@ interface StockLog {
 }
 
 export default function InventoryPage() {
+  const router = useRouter();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -61,13 +63,26 @@ export default function InventoryPage() {
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (showLowStock) params.set("lowStock", "true");
-    const res = await fetch(`/api/inventory?${params}`);
-    setItems(await res.json());
-    setLoading(false);
-  }, [search, showLowStock]);
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (showLowStock) params.set("lowStock", "true");
+      const res = await fetch(`/api/inventory?${params}`);
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+        throw new Error(`Failed to fetch inventory: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error fetching inventory items:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [search, showLowStock, router]);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
@@ -156,9 +171,20 @@ export default function InventoryPage() {
 
   const openLogs = async (item: InventoryItem) => {
     setLogItem(item);
-    const res = await fetch(`/api/inventory/${item.id}`);
-    const data = await res.json();
-    setLogs(data.logs || []);
+    try {
+      const res = await fetch(`/api/inventory/${item.id}`);
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+        throw new Error(`Failed to fetch logs: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setLogs(data.logs || []);
+    } catch (error) {
+      console.error("Error fetching inventory item logs:", error);
+    }
   };
 
   const lowStockCount = items.filter((i) => i.qty <= i.minStock).length;

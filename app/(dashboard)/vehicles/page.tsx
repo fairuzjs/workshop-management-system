@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -36,6 +37,7 @@ interface Vehicle {
 }
 
 export default function VehiclesPage() {
+  const router = useRouter();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -70,16 +72,39 @@ export default function VehiclesPage() {
 
   const fetchVehicles = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/vehicles?search=${encodeURIComponent(search)}`);
-    const data = await res.json();
-    setVehicles(data);
-    setLoading(false);
-  }, [search]);
+    try {
+      const res = await fetch(`/api/vehicles?search=${encodeURIComponent(search)}`);
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+        throw new Error(`Failed to fetch vehicles: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setVehicles(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error fetching vehicles:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [search, router]);
 
   const fetchCustomers = async () => {
-    const res = await fetch("/api/customers");
-    const data = await res.json();
-    setCustomers(data);
+    try {
+      const res = await fetch("/api/customers");
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+        throw new Error(`Failed to fetch customers: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setCustomers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error fetching customers:", error);
+    }
   };
 
   useEffect(() => {
