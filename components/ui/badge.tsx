@@ -63,8 +63,8 @@ export function PaymentStatusBadge({ status }: { status: string }) {
 
 export function ServiceCategoryBadge({ category }: { category: string }) {
   const config: Record<string, { label: string; variant: BadgeVariant }> = {
-    SERVIS: { label: "🔧 Servis", variant: "primary" },
-    CUCI: { label: "🚿 Cuci", variant: "success" },
+    SERVIS: { label: "Servis", variant: "primary" },
+    CUCI: { label: "Cuci", variant: "success" },
   };
 
   const { label, variant } = config[category] || {

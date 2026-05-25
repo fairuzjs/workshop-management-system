@@ -179,8 +179,8 @@ export function DashboardClient({
                       <td className="whitespace-nowrap px-6 py-4">
                         <span className="text-xs font-medium text-muted-foreground">
                           {wo.serviceType === "SERVIS"
-                            ? "🔧 Servis"
-                            : "🚿 Cuci"}
+                            ? "Servis"
+                            : "Cuci"}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">

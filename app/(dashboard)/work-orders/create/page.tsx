@@ -311,7 +311,7 @@ export default function CreateWorkOrderPage() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                🔧 Servis Bengkel
+                Servis Bengkel
               </button>
               <button
                 onClick={() => setServiceType("CUCI")}
@@ -321,7 +321,7 @@ export default function CreateWorkOrderPage() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                🚿 Cuci Kendaraan
+                Cuci Kendaraan
               </button>
             </div>
 
@@ -469,7 +469,7 @@ export default function CreateWorkOrderPage() {
                   Tipe Layanan
                 </p>
                 <p className="mt-1 text-sm font-medium text-foreground">
-                  {serviceType === "SERVIS" ? "🔧 Servis Bengkel" : "🚿 Cuci Kendaraan"}
+                  {serviceType === "SERVIS" ? "Servis Bengkel" : "Cuci Kendaraan"}
                 </p>
               </div>
 

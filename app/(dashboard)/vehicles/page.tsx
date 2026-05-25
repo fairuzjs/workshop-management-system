@@ -182,11 +182,9 @@ export default function VehiclesPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={openAddExisting}>
-            <Plus className="h-4 w-4" />
             Tambah Kendaraan
           </Button>
           <Button onClick={() => setShowCustomerModal(true)}>
-            <Plus className="h-4 w-4" />
             Customer Baru + Kendaraan
           </Button>
         </div>

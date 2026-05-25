@@ -8,7 +8,7 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log("🌱 Seeding database...");
+  console.log("Seeding database...");
 
   // --- Users ---
   const hashedPassword = await bcrypt.hash("admin123", 12);
@@ -35,7 +35,7 @@ async function main() {
     },
   });
 
-  console.log("✅ Users seeded:", { superadmin: superadmin.username, admin: admin.username });
+  console.log("Users seeded:", { superadmin: superadmin.username, admin: admin.username });
 
   // --- Employees ---
   const employees = await Promise.all([
@@ -73,7 +73,7 @@ async function main() {
     }),
   ]);
 
-  console.log("✅ Employees seeded:", employees.length);
+  console.log("Employees seeded:", employees.length);
 
   // --- Services: SERVIS BENGKEL ---
   const servisServices = await Promise.all([
@@ -94,7 +94,7 @@ async function main() {
     }),
   ]);
 
-  console.log("✅ Workshop services seeded:", servisServices.length);
+  console.log("Workshop services seeded:", servisServices.length);
 
   // --- Services: CUCI KENDARAAN ---
   const cuciSmall = await prisma.service.create({
@@ -109,7 +109,7 @@ async function main() {
     data: { name: "Cuci Kendaraan Besar", category: "CUCI", price: 75000 },
   });
 
-  console.log("✅ Car wash services seeded: 3");
+  console.log("Car wash services seeded: 3");
 
   // --- Service Commissions (for CUCI) ---
   await Promise.all([
@@ -124,7 +124,7 @@ async function main() {
     }),
   ]);
 
-  console.log("✅ Service commissions seeded");
+  console.log("Service commissions seeded");
 
   // --- Inventory / Spareparts ---
   const inventoryItems = await Promise.all([
@@ -145,9 +145,9 @@ async function main() {
     }),
   ]);
 
-  console.log("✅ Inventory seeded:", inventoryItems.length);
-  console.log("\n🎉 Seeding complete!");
-  console.log("📝 Default credentials:");
+  console.log("Inventory seeded:", inventoryItems.length);
+  console.log("\nSeeding complete!");
+  console.log("Default credentials:");
   console.log("   SuperAdmin → username: superadmin, password: admin123");
   console.log("   Admin      → username: admin, password: admin123");
 }

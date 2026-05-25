@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -23,6 +24,12 @@ import {
   User,
   Receipt,
   Loader2,
+  Package,
+  Plus,
+  Trash2,
+  Banknote,
+  CreditCard,
+  QrCode,
 } from "lucide-react";
 
 interface WorkOrderDetail {
@@ -61,6 +68,14 @@ interface Employee {
   position: string;
 }
 
+interface InventoryItem {
+  id: string;
+  name: string;
+  qty: number;
+  unit: string;
+  price: string;
+}
+
 export default function WorkOrderDetailPage() {
   const router = useRouter();
   const { id } = useParams();
@@ -73,6 +88,15 @@ export default function WorkOrderDetailPage() {
   const [showAssign, setShowAssign] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [assignId, setAssignId] = useState("");
+
+  // Add part modal
+  const [showAddPart, setShowAddPart] = useState(false);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [partForm, setPartForm] = useState({ inventoryId: "", qty: "1" });
+
+  // Payment modal
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("");
 
   const fetchWO = useCallback(async () => {
     const res = await fetch(`/api/work-orders/${id}`);
@@ -125,6 +149,64 @@ export default function WorkOrderDetailPage() {
     }
   };
 
+  const openAddPart = async () => {
+    const res = await fetch("/api/inventory");
+    const data = await res.json();
+    setInventoryItems(data.filter((i: InventoryItem) => i.qty > 0));
+    setPartForm({ inventoryId: "", qty: "1" });
+    setShowAddPart(true);
+  };
+
+  const handleAddPart = async () => {
+    setUpdating(true);
+    const res = await fetch(`/api/work-orders/${id}/parts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        inventoryId: partForm.inventoryId,
+        qty: parseInt(partForm.qty),
+      }),
+    });
+    if (res.ok) {
+      setShowAddPart(false);
+      await fetchWO();
+    } else {
+      const err = await res.json();
+      alert(err.error);
+    }
+    setUpdating(false);
+  };
+
+  const handleRemovePart = async (partId: string) => {
+    if (!confirm("Hapus part ini? Stok akan dikembalikan.")) return;
+    setUpdating(true);
+    await fetch(`/api/work-orders/${id}/parts`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ partId }),
+    });
+    await fetchWO();
+    setUpdating(false);
+  };
+
+  const handlePayment = async () => {
+    if (!paymentMethod) return;
+    setUpdating(true);
+    const res = await fetch(`/api/work-orders/${id}/transaction`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentMethod }),
+    });
+    if (res.ok) {
+      setShowPayment(false);
+      await fetchWO();
+    } else {
+      const err = await res.json();
+      alert(err.error);
+    }
+    setUpdating(false);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -141,11 +223,7 @@ export default function WorkOrderDetailPage() {
     );
   }
 
-  const partsTotal = wo.parts.reduce(
-    (sum, p) => sum + Number(p.price) * p.qty,
-    0
-  );
-  const grandTotal = Number(wo.totalCost) + partsTotal;
+  const grandTotal = Number(wo.totalCost);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -294,12 +372,24 @@ export default function WorkOrderDetailPage() {
                       <span className="text-sm text-foreground">
                         {p.inventory.name} × {p.qty}
                       </span>
-                      <span className="text-sm font-medium text-foreground">
-                        {formatCurrency(Number(p.price) * p.qty)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">
+                          {formatCurrency(Number(p.price) * p.qty)}
+                        </span>
+                        {wo.status !== "SELESAI" && (
+                          <button onClick={() => handleRemovePart(p.id)} className="rounded p-1 text-muted-foreground hover:text-destructive">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </>
+              )}
+              {wo.status !== "SELESAI" && wo.serviceType === "SERVIS" && (
+                <button onClick={openAddPart} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-3 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary">
+                  <Plus className="h-4 w-4" /> Tambah Sparepart
+                </button>
               )}
               <hr className="border-border" />
               <div className="flex items-center justify-between px-4 py-2">
@@ -407,9 +497,16 @@ export default function WorkOrderDetailPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                Belum ada transaksi
-              </p>
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  Belum ada transaksi
+                </p>
+                {wo.status === "SELESAI" && (
+                  <Button size="sm" className="mt-3 w-full" onClick={() => { setPaymentMethod(""); setShowPayment(true); }}>
+                    <Receipt className="h-4 w-4" /> Proses Pembayaran
+                  </Button>
+                )}
+              </div>
             )}
           </div>
 
@@ -424,32 +521,60 @@ export default function WorkOrderDetailPage() {
       </div>
 
       {/* Assign Employee Modal */}
-      <Modal
-        isOpen={showAssign}
-        onClose={() => setShowAssign(false)}
-        title="Tugaskan Petugas"
-      >
+      <Modal isOpen={showAssign} onClose={() => setShowAssign(false)} title="Tugaskan Petugas">
         <div className="space-y-4">
-          <Select
-            label="Petugas"
-            value={assignId}
-            onChange={(e) => setAssignId(e.target.value)}
-            options={employees.map((e) => ({
-              value: e.id,
-              label: `${e.name} — ${e.position}`,
-            }))}
-            placeholder="Pilih petugas"
-          />
+          <Select label="Petugas" value={assignId} onChange={(e) => setAssignId(e.target.value)}
+            options={employees.map((e) => ({ value: e.id, label: `${e.name} — ${e.position}` }))} placeholder="Pilih petugas" />
           <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowAssign(false)}
-            >
-              Batal
-            </Button>
-            <Button onClick={assignEmployee} loading={updating}>
-              Simpan
-            </Button>
+            <Button variant="outline" onClick={() => setShowAssign(false)}>Batal</Button>
+            <Button onClick={assignEmployee} loading={updating}>Simpan</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Add Part Modal */}
+      <Modal isOpen={showAddPart} onClose={() => setShowAddPart(false)} title="Tambah Sparepart" description="Pilih item dari inventory">
+        <div className="space-y-4">
+          <Select label="Item" value={partForm.inventoryId} onChange={(e) => setPartForm({ ...partForm, inventoryId: e.target.value })}
+            options={inventoryItems.map((i) => ({ value: i.id, label: `${i.name} — Stok: ${i.qty} ${i.unit} — ${formatCurrency(i.price)}` }))} placeholder="Pilih item" />
+          <Input label="Jumlah" type="number" value={partForm.qty} onChange={(e) => setPartForm({ ...partForm, qty: e.target.value })} min={1} />
+          {partForm.inventoryId && (
+            <div className="rounded-lg bg-muted/50 p-3">
+              <p className="text-sm text-muted-foreground">Estimasi biaya:</p>
+              <p className="text-lg font-bold text-foreground">
+                {formatCurrency(Number(inventoryItems.find(i => i.id === partForm.inventoryId)?.price || 0) * parseInt(partForm.qty || "0"))}
+              </p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowAddPart(false)}>Batal</Button>
+            <Button onClick={handleAddPart} loading={updating} disabled={!partForm.inventoryId}>Tambahkan</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Payment Modal */}
+      <Modal isOpen={showPayment} onClose={() => setShowPayment(false)} title="Proses Pembayaran" description={`Total: ${formatCurrency(grandTotal)}`}>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">Pilih metode pembayaran</p>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { id: "CASH", label: "Cash", icon: Banknote },
+              { id: "TRANSFER", label: "Transfer", icon: CreditCard },
+              { id: "QRIS", label: "QRIS", icon: QrCode },
+            ].map((method) => (
+              <button key={method.id} onClick={() => setPaymentMethod(method.id)}
+                className={`flex flex-col items-center gap-2 rounded-lg border p-4 transition-all ${
+                  paymentMethod === method.id ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border hover:border-primary/30"
+                }`}>
+                <method.icon className={`h-6 w-6 ${paymentMethod === method.id ? "text-primary" : "text-muted-foreground"}`} />
+                <span className="text-sm font-medium">{method.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowPayment(false)}>Batal</Button>
+            <Button onClick={handlePayment} loading={updating} disabled={!paymentMethod}>Bayar {formatCurrency(grandTotal)}</Button>
           </div>
         </div>
       </Modal>
