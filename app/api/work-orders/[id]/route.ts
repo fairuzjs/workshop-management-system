@@ -21,6 +21,7 @@ export async function GET(
       services: { include: { service: true } },
       parts: { include: { inventory: true } },
       transaction: true,
+      historyItems: { orderBy: { createdAt: 'asc' } },
     },
   });
 
@@ -40,7 +41,12 @@ export async function PATCH(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const body = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch (e) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { status, employeeId } = body;
 
   const existing = await prisma.workOrder.findUnique({ where: { id } });
@@ -70,42 +76,73 @@ export async function PATCH(
     updateData.status = status;
 
     if (status === "PROSES") {
-      updateData.startedAt = new Date();
+      if (!existing.startedAt) updateData.startedAt = new Date();
     } else if (status === "SELESAI") {
-      updateData.completedAt = new Date();
-
-      // Auto-create commission earnings for CUCI work orders
-      if (existing.serviceType === "CUCI" && existing.employeeId) {
-        const woServices = await prisma.workOrderService.findMany({
-          where: { workOrderId: id },
-          include: {
-            service: { include: { commission: true } },
-          },
-        });
-
-        const commissionEarnings = woServices
-          .filter((ws) => ws.service.commission)
-          .map((ws) => ({
-            employeeId: existing.employeeId!,
-            workOrderId: id,
-            earningType: "COMMISSION" as const,
-            amount:
-              (Number(ws.price) * Number(ws.service.commission!.commissionRate)) /
-              100,
-            month: new Date().getMonth() + 1,
-            year: new Date().getFullYear(),
-          }));
-
-        if (commissionEarnings.length > 0) {
-          await prisma.employeeEarning.createMany({
-            data: commissionEarnings,
-          });
+      if (!existing.completedAt) updateData.completedAt = new Date();
+      
+      // Auto-commission for CUCI
+      if (existing.serviceType === "CUCI") {
+        const empId = employeeId !== undefined ? employeeId : existing.employeeId;
+        if (empId) {
+          try {
+            // Check existing earning
+            const existingEarning = await prisma.employeeEarning.findFirst({
+              where: { workOrderId: id, earningType: "COMMISSION" }
+            });
+            
+            if (!existingEarning) {
+              // Try to find commission rate from services
+              const woServices = await prisma.workOrderService.findMany({
+                where: { workOrderId: id },
+                include: { service: { include: { commission: true } } }
+              });
+              
+              let totalCommission = 0;
+              woServices.forEach(ws => {
+                if (ws.service.commission) {
+                  const rate = Number(ws.service.commission.commissionRate) / 100;
+                  totalCommission += Number(ws.price) * rate;
+                }
+              });
+              
+              if (totalCommission > 0) {
+                const now = new Date();
+                await prisma.employeeEarning.create({
+                  data: {
+                    employeeId: empId,
+                    workOrderId: id,
+                    earningType: "COMMISSION",
+                    amount: totalCommission,
+                    month: now.getMonth() + 1,
+                    year: now.getFullYear()
+                  }
+                });
+              }
+            }
+          } catch (e) {
+            console.error("Failed to generate commission:", e);
+          }
         }
       }
     }
   }
 
   if (employeeId !== undefined) {
+    if (employeeId) {
+      const activeWoCount = await prisma.workOrder.count({
+        where: {
+          employeeId,
+          status: { in: ["ANTRI", "PROSES"] },
+          id: { not: id } // exclude the current work order
+        }
+      });
+      if (activeWoCount > 0) {
+        return NextResponse.json(
+          { error: "Karyawan ini sedang mengerjakan Work Order lain" },
+          { status: 400 }
+        );
+      }
+    }
     updateData.employeeId = employeeId || null;
   }
 
@@ -118,6 +155,7 @@ export async function PATCH(
       services: { include: { service: true } },
       parts: { include: { inventory: true } },
       transaction: true,
+      historyItems: { orderBy: { createdAt: 'asc' } },
     },
   });
 

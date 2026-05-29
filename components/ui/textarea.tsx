@@ -22,7 +22,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           ref={ref}
           id={id}
           className={cn(
-            "flex min-h-[80px] w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors resize-none",
+            "flex min-h-[80px] w-full rounded-xl border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground transition-colors resize-none",
             "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
             error
               ? "border-destructive focus:ring-destructive/20 focus:border-destructive"

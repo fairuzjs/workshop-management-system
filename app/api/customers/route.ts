@@ -38,19 +38,24 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch (e) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { name, phone, email, vehicle } = body;
 
-  if (!name || !phone) {
+  if (!phone) {
     return NextResponse.json(
-      { error: "Nama dan nomor telepon wajib diisi" },
+      { error: "Nomor telepon wajib diisi" },
       { status: 400 }
     );
   }
 
   const customer = await prisma.customer.create({
     data: {
-      name,
+      name: name || null,
       phone,
       email: email || null,
       ...(vehicle?.plateNumber

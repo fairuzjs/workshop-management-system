@@ -42,7 +42,7 @@ async function main() {
     prisma.employee.create({
       data: {
         name: "Budi Santoso",
-        position: "Mekanik Senior",
+        position: "Mekanik",
         phone: "081234567890",
         salary: 3500000,
       },
@@ -58,7 +58,7 @@ async function main() {
     prisma.employee.create({
       data: {
         name: "Rudi Hermawan",
-        position: "Pencuci",
+        position: "Pencuci Mobil",
         phone: "081234567892",
         salary: 0,
       },
@@ -66,7 +66,7 @@ async function main() {
     prisma.employee.create({
       data: {
         name: "Deni Saputra",
-        position: "Pencuci",
+        position: "Pencuci Mobil",
         phone: "081234567893",
         salary: 0,
       },

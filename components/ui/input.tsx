@@ -23,7 +23,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={id}
           className={cn(
-            "flex h-10 w-full rounded-lg border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground transition-colors",
+            "flex h-11 w-full rounded-xl border bg-background px-4 text-sm text-foreground placeholder:text-muted-foreground transition-colors",
             "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
             error
               ? "border-destructive focus:ring-destructive/20 focus:border-destructive"

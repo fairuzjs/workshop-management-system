@@ -11,6 +11,7 @@ interface StatCardProps {
     isPositive: boolean;
   };
   variant?: "default" | "primary" | "success" | "warning" | "destructive";
+  className?: string;
 }
 
 const variantStyles = {
@@ -38,11 +39,17 @@ export function StatCard({
   icon: Icon,
   trend,
   variant = "default",
+  className,
 }: StatCardProps) {
   const styles = variantStyles[variant];
 
   return (
-    <div className="group rounded-xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:shadow-md">
+    <div
+      className={cn(
+        "group rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:shadow-md",
+        className
+      )}
+    >
       <div className="flex items-start justify-between">
         <div className="flex-1 space-y-1">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>

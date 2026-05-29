@@ -2,8 +2,22 @@ import { requireAuth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { DashboardClient } from "./_components/dashboard-client";
 
-export default async function DashboardPage() {
+export default async function DashboardPage(props: { searchParams: Promise<{ period?: string }> }) {
   const session = await requireAuth();
+  const searchParams = await props.searchParams;
+  const period = searchParams.period || "month";
+
+  let dateFilter = {};
+  const now = new Date();
+  if (period === "today") {
+    const start = new Date(now.setHours(0, 0, 0, 0));
+    const end = new Date(now.setHours(23, 59, 59, 999));
+    dateFilter = { gte: start, lte: end };
+  } else if (period === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    dateFilter = { gte: start, lte: end };
+  }
 
   // Fetch dashboard stats
   const [
@@ -11,6 +25,9 @@ export default async function DashboardPage() {
     activeWorkOrders,
     completedToday,
     totalRevenue,
+    totalExpense,
+    totalSalary,
+    totalEarning,
   ] = await Promise.all([
     prisma.workOrder.count(),
     prisma.workOrder.count({
@@ -26,9 +43,32 @@ export default async function DashboardPage() {
     }),
     prisma.transaction.aggregate({
       _sum: { amount: true },
-      where: { status: "LUNAS" },
+      where: { 
+        status: "LUNAS",
+        ...(Object.keys(dateFilter).length > 0 ? { paidAt: dateFilter } : {})
+      },
+    }),
+    prisma.expense.aggregate({
+      _sum: { amount: true },
+      where: {
+        ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {})
+      }
+    }),
+    prisma.employee.aggregate({
+      _sum: { salary: true },
+      where: { isActive: true },
+    }),
+    prisma.employeeEarning.aggregate({
+      _sum: { amount: true },
+      where: {
+        ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {})
+      }
     }),
   ]);
+
+  const rev = Number(totalRevenue._sum.amount || 0);
+  const exp = Number(totalExpense._sum.amount || 0);
+  const payroll = Number(totalSalary._sum.salary || 0) + Number(totalEarning._sum.amount || 0);
 
   // Recent work orders
   const recentWorkOrders = await prisma.workOrder.findMany({
@@ -48,14 +88,18 @@ export default async function DashboardPage() {
         totalWorkOrders,
         activeWorkOrders,
         completedToday,
-        totalRevenue: Number(totalRevenue._sum.amount || 0),
+        totalRevenue: rev,
+        totalExpense: exp,
+        totalPayroll: payroll,
+        estimatedProfit: rev - exp - payroll,
       }}
+      period={period}
       recentWorkOrders={recentWorkOrders.map((wo) => ({
         id: wo.id,
         trackingToken: wo.trackingToken,
         status: wo.status,
         serviceType: wo.serviceType,
-        customerName: wo.vehicle.customer.name ?? "",
+        customerPhone: wo.vehicle.customer.phone ?? "",
         plateNumber: wo.vehicle.plateNumber,
         employeeName: wo.employee?.name || "-",
         totalCost: Number(wo.totalCost),
