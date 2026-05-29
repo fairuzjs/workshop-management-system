@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
   ArrowRight,
@@ -38,6 +39,7 @@ interface Employee {
   id: string;
   name: string;
   position: string;
+  _count?: { workOrders: number };
 }
 
 const steps = [
@@ -68,7 +70,7 @@ export default function CreateWorkOrderPage() {
   // New customer inline form
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
-    name: "", phone: "", plateNumber: "", brand: "", model: "", color: "",
+    phone: "", plateNumber: "", brand: "", model: "",
   });
   const [creatingCustomer, setCreatingCustomer] = useState(false);
 
@@ -86,7 +88,12 @@ export default function CreateWorkOrderPage() {
   }, [serviceType]);
 
   useEffect(() => {
-    fetch("/api/employees").then((r) => r.json()).then(setEmployees);
+    fetch("/api/employees")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => {
+        if (Array.isArray(data)) setEmployees(data);
+      })
+      .catch(() => setEmployees([]));
   }, []);
 
   const selectedServices = services.filter((s) =>
@@ -109,29 +116,25 @@ export default function CreateWorkOrderPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: newCustomer.name,
         phone: newCustomer.phone,
         vehicle: {
           plateNumber: newCustomer.plateNumber,
           brand: newCustomer.brand,
           model: newCustomer.model,
-          color: newCustomer.color,
         },
       }),
     });
     if (res.ok) {
       const customer = await res.json();
-      // Refresh vehicles
       const vRes = await fetch("/api/vehicles");
       const vData = await vRes.json();
       setVehicles(vData);
-      // Auto-select the new vehicle
       const newVehicle = vData.find(
         (v: Vehicle) => v.customer.id === customer.id
       );
       if (newVehicle) setSelectedVehicle(newVehicle);
       setShowNewCustomer(false);
-      setNewCustomer({ name: "", phone: "", plateNumber: "", brand: "", model: "", color: "" });
+      setNewCustomer({ phone: "", plateNumber: "", brand: "", model: "" });
     }
     setCreatingCustomer(false);
   };
@@ -167,12 +170,12 @@ export default function CreateWorkOrderPage() {
       <div className="flex items-center gap-4">
         <button
           onClick={() => router.back()}
-          className="rounded-lg p-2 text-muted-foreground hover:bg-accent"
+          className="rounded-xl p-2 text-muted-foreground hover:bg-accent"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Buat Work Order</h1>
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">Buat Work Order</h1>
           <p className="text-sm text-muted-foreground">
             Ikuti langkah-langkah di bawah
           </p>
@@ -180,44 +183,68 @@ export default function CreateWorkOrderPage() {
       </div>
 
       {/* Step Indicator */}
-      <div className="flex items-center justify-between rounded-xl border border-border bg-card p-4">
-        {steps.map((s, i) => (
-          <div key={s.id} className="flex items-center gap-2">
-            <div
-              className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-all ${
-                step > s.id
-                  ? "bg-success text-success-foreground"
-                  : step === s.id
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {step > s.id ? <Check className="h-4 w-4" /> : s.id}
+      <div className="rounded-2xl border border-border bg-card p-4">
+        {/* Desktop stepper */}
+        <div className="hidden items-center justify-between sm:flex">
+          {steps.map((s, i) => (
+            <div key={s.id} className="flex flex-1 items-center">
+              <div className="flex flex-col items-center gap-1.5">
+                <div
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-all",
+                    step > s.id
+                      ? "bg-success text-success-foreground"
+                      : step === s.id
+                      ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
+                      : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {step > s.id ? <Check className="h-4 w-4" /> : s.id}
+                </div>
+                <span
+                  className={cn(
+                    "text-xs font-medium",
+                    step >= s.id ? "text-foreground" : "text-muted-foreground"
+                  )}
+                >
+                  {s.title}
+                </span>
+              </div>
+              {i < steps.length - 1 && (
+                <div
+                  className={cn(
+                    "mx-3 h-0.5 flex-1 rounded-full",
+                    step > s.id ? "bg-success" : "bg-border"
+                  )}
+                />
+              )}
             </div>
-            <span
-              className={`hidden text-sm font-medium sm:block ${
-                step >= s.id ? "text-foreground" : "text-muted-foreground"
-              }`}
-            >
-              {s.title}
+          ))}
+        </div>
+
+        {/* Mobile progress bar */}
+        <div className="sm:hidden">
+          <div className="mb-2 flex items-center justify-between text-xs">
+            <span className="font-medium text-foreground">
+              Step {step}: {steps[step - 1].title}
             </span>
-            {i < steps.length - 1 && (
-              <div
-                className={`mx-2 hidden h-px w-8 sm:block ${
-                  step > s.id ? "bg-success" : "bg-border"
-                }`}
-              />
-            )}
+            <span className="text-muted-foreground">{step}/4</span>
           </div>
-        ))}
+          <div className="h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-300"
+              style={{ width: `${(step / 4) * 100}%` }}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Step Content */}
-      <div className="rounded-xl border border-border bg-card p-6">
+      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
         {/* Step 1: Select Vehicle */}
         {step === 1 && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-semibold text-foreground">
                 Pilih Kendaraan
               </h2>
@@ -232,17 +259,15 @@ export default function CreateWorkOrderPage() {
             </div>
 
             {showNewCustomer && (
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
                 <h3 className="text-sm font-semibold text-foreground">Daftar Customer Baru</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input label="Nama" value={newCustomer.name} onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })} required />
+                <div className="grid gap-3 sm:grid-cols-1">
                   <Input label="No. HP" value={newCustomer.phone} onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })} required />
                 </div>
                 <Input label="Plat Nomor" value={newCustomer.plateNumber} onChange={(e) => setNewCustomer({ ...newCustomer, plateNumber: e.target.value })} required />
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <Input label="Merek" value={newCustomer.brand} onChange={(e) => setNewCustomer({ ...newCustomer, brand: e.target.value })} />
                   <Input label="Model" value={newCustomer.model} onChange={(e) => setNewCustomer({ ...newCustomer, model: e.target.value })} />
-                  <Input label="Warna" value={newCustomer.color} onChange={(e) => setNewCustomer({ ...newCustomer, color: e.target.value })} />
                 </div>
                 <Button size="sm" loading={creatingCustomer} onClick={handleCreateCustomer}>
                   Simpan & Pilih
@@ -251,13 +276,13 @@ export default function CreateWorkOrderPage() {
             )}
 
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Cari plat nomor atau nama customer..."
+                placeholder="Cari plat nomor atau merk..."
                 value={vehicleSearch}
                 onChange={(e) => setVehicleSearch(e.target.value)}
-                className="h-10 w-full rounded-lg border border-input bg-background pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-11 w-full rounded-xl border border-input bg-background pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
 
@@ -266,15 +291,16 @@ export default function CreateWorkOrderPage() {
                 <button
                   key={v.id}
                   onClick={() => setSelectedVehicle(v)}
-                  className={`w-full rounded-lg border p-4 text-left transition-all ${
+                  className={cn(
+                    "w-full rounded-xl border p-4 text-left transition-all",
                     selectedVehicle?.id === v.id
                       ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                       : "border-border hover:border-primary/30 hover:bg-accent/50"
-                  }`}
+                  )}
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-sm font-bold text-foreground">
+                      <span className="rounded-lg bg-muted px-2 py-0.5 font-mono text-sm font-bold text-foreground">
                         {v.plateNumber}
                       </span>
                       <span className="ml-3 text-sm text-muted-foreground">
@@ -286,7 +312,7 @@ export default function CreateWorkOrderPage() {
                     )}
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {v.customer.name} — {v.customer.phone}
+                    {v.brand || "-"} {v.model || "-"} — {v.customer.phone}
                   </p>
                 </button>
               ))}
@@ -302,24 +328,26 @@ export default function CreateWorkOrderPage() {
             </h2>
 
             {/* Service Type Toggle */}
-            <div className="flex rounded-lg border border-border p-1">
+            <div className="flex rounded-xl border border-border p-1">
               <button
                 onClick={() => setServiceType("SERVIS")}
-                className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                className={cn(
+                  "flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all",
                   serviceType === "SERVIS"
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
-                }`}
+                )}
               >
                 Servis Bengkel
               </button>
               <button
                 onClick={() => setServiceType("CUCI")}
-                className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                className={cn(
+                  "flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all",
                   serviceType === "CUCI"
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
-                }`}
+                )}
               >
                 Cuci Kendaraan
               </button>
@@ -330,11 +358,12 @@ export default function CreateWorkOrderPage() {
                 <button
                   key={s.id}
                   onClick={() => toggleService(s.id)}
-                  className={`w-full rounded-lg border p-4 text-left transition-all ${
+                  className={cn(
+                    "w-full rounded-xl border p-4 text-left transition-all",
                     selectedServiceIds.includes(s.id)
                       ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                       : "border-border hover:border-primary/30 hover:bg-accent/50"
-                  }`}
+                  )}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-foreground">
@@ -345,7 +374,9 @@ export default function CreateWorkOrderPage() {
                         {formatCurrency(s.price)}
                       </span>
                       {selectedServiceIds.includes(s.id) && (
-                        <Check className="h-5 w-5 text-primary" />
+                        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        </div>
                       )}
                     </div>
                   </div>
@@ -354,7 +385,7 @@ export default function CreateWorkOrderPage() {
             </div>
 
             {selectedServiceIds.length > 0 && (
-              <div className="rounded-lg bg-muted/50 p-4">
+              <div className="rounded-xl bg-muted/50 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">
                     {selectedServiceIds.length} layanan dipilih
@@ -381,25 +412,38 @@ export default function CreateWorkOrderPage() {
             <div className="space-y-2">
               <button
                 onClick={() => setSelectedEmployee("")}
-                className={`w-full rounded-lg border p-4 text-left transition-all ${
+                className={cn(
+                  "w-full rounded-xl border p-4 text-left transition-all",
                   !selectedEmployee
                     ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                     : "border-border hover:border-primary/30"
-                }`}
+                )}
               >
                 <span className="text-sm font-medium text-muted-foreground">
                   — Belum ditentukan —
                 </span>
               </button>
-              {employees.map((emp) => (
-                <button
-                  key={emp.id}
+              {(() => {
+                const filteredEmployees = employees.filter((emp) => {
+                  if (emp._count?.workOrders && emp._count.workOrders > 0) return false;
+                  
+                  if (serviceType === "SERVIS") {
+                    return ["Mekanik", "Hybrid"].includes(emp.position);
+                  } else if (serviceType === "CUCI") {
+                    return ["Pencuci Mobil", "Hybrid"].includes(emp.position);
+                  }
+                  return true;
+                });
+                return filteredEmployees.map((emp) => (
+                  <button
+                    key={emp.id}
                   onClick={() => setSelectedEmployee(emp.id)}
-                  className={`w-full rounded-lg border p-4 text-left transition-all ${
+                  className={cn(
+                    "w-full rounded-xl border p-4 text-left transition-all",
                     selectedEmployee === emp.id
                       ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                       : "border-border hover:border-primary/30 hover:bg-accent/50"
-                  }`}
+                  )}
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -411,11 +455,14 @@ export default function CreateWorkOrderPage() {
                       </span>
                     </div>
                     {selectedEmployee === emp.id && (
-                      <Check className="h-5 w-5 text-primary" />
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                        <Check className="h-3 w-3 text-primary-foreground" />
+                      </div>
                     )}
                   </div>
                 </button>
-              ))}
+                ));
+              })()}
             </div>
 
             <Textarea
@@ -434,21 +481,21 @@ export default function CreateWorkOrderPage() {
               Konfirmasi Work Order
             </h2>
 
-            <div className="space-y-4 rounded-lg border border-border p-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4 rounded-xl border border-border p-5">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Customer
                   </p>
-                  <p className="mt-1 text-sm font-medium text-foreground">
-                    {selectedVehicle?.customer.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedVehicle?.customer.phone}
-                  </p>
+                  <div className="font-medium text-foreground">
+                  {selectedVehicle?.brand || "-"} {selectedVehicle?.model || "-"}
+                </div>
+                <div className="text-muted-foreground">
+                  {selectedVehicle?.customer.phone}
+                </div>
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Kendaraan
                   </p>
                   <p className="mt-1 text-sm font-medium text-foreground">
@@ -465,7 +512,7 @@ export default function CreateWorkOrderPage() {
               <hr className="border-border" />
 
               <div>
-                <p className="text-xs font-medium uppercase text-muted-foreground">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Tipe Layanan
                 </p>
                 <p className="mt-1 text-sm font-medium text-foreground">
@@ -474,7 +521,7 @@ export default function CreateWorkOrderPage() {
               </div>
 
               <div>
-                <p className="text-xs font-medium uppercase text-muted-foreground">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Layanan Dipilih
                 </p>
                 <div className="mt-2 space-y-1">
@@ -501,7 +548,7 @@ export default function CreateWorkOrderPage() {
 
               {selectedEmployee && (
                 <div>
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Petugas
                   </p>
                   <p className="mt-1 text-sm font-medium text-foreground">
@@ -512,7 +559,7 @@ export default function CreateWorkOrderPage() {
 
               {notes && (
                 <div>
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Catatan
                   </p>
                   <p className="mt-1 text-sm text-foreground">{notes}</p>
@@ -523,14 +570,14 @@ export default function CreateWorkOrderPage() {
         )}
       </div>
 
-      {/* Navigation */}
-      <div className="flex items-center justify-between">
+      {/* Navigation - Sticky on mobile */}
+      <div className="sticky bottom-0 -mx-4 flex items-center justify-between bg-background px-4 py-4 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:py-0">
         <Button
           variant="outline"
           onClick={() => (step === 1 ? router.back() : setStep(step - 1))}
         >
           <ArrowLeft className="h-4 w-4" />
-          {step === 1 ? "Batal" : "Sebelumnya"}
+          <span className="hidden sm:inline">{step === 1 ? "Batal" : "Sebelumnya"}</span>
         </Button>
 
         {step < 4 ? (
@@ -538,7 +585,8 @@ export default function CreateWorkOrderPage() {
             onClick={() => setStep(step + 1)}
             disabled={!canNext}
           >
-            Selanjutnya
+            <span className="hidden sm:inline">Selanjutnya</span>
+            <span className="sm:hidden">Lanjut</span>
             <ArrowRight className="h-4 w-4" />
           </Button>
         ) : (

@@ -15,15 +15,19 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <Header />
-      <main
+      {/* Main area offset by sidebar on desktop */}
+      <div
         className={cn(
-          "min-h-screen pt-16 transition-all duration-300",
-          isCollapsed ? "pl-[68px]" : "pl-[260px]"
+          "min-h-screen transition-all duration-300",
+          "lg:pl-[272px]",
+          isCollapsed && "lg:pl-[72px]"
         )}
       >
-        <div className="p-6">{children}</div>
-      </main>
+        <Header />
+        <main className="px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">{children}</div>
+        </main>
+      </div>
     </div>
   );
 }

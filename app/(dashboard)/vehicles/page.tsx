@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Car,
@@ -16,6 +17,7 @@ import {
   Trash2,
   User,
   Phone,
+  MoreVertical,
 } from "lucide-react";
 
 interface Customer {
@@ -45,7 +47,6 @@ export default function VehiclesPage() {
   const [editVehicle, setEditVehicle] = useState<Vehicle | null>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
 
-  // Form state for new vehicle
   const [form, setForm] = useState({
     customerId: "",
     plateNumber: "",
@@ -55,16 +56,13 @@ export default function VehiclesPage() {
     color: "",
   });
 
-  // Form state for new customer + vehicle
   const [customerForm, setCustomerForm] = useState({
-    name: "",
     phone: "",
     email: "",
     plateNumber: "",
     type: "",
     brand: "",
     model: "",
-    color: "",
   });
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -134,7 +132,6 @@ export default function VehiclesPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: customerForm.name,
         phone: customerForm.phone,
         email: customerForm.email || null,
         vehicle: {
@@ -142,13 +139,12 @@ export default function VehiclesPage() {
           type: customerForm.type,
           brand: customerForm.brand,
           model: customerForm.model,
-          color: customerForm.color,
         },
       }),
     });
     if (res.ok) {
       setShowCustomerModal(false);
-      setCustomerForm({ name: "", phone: "", email: "", plateNumber: "", type: "", brand: "", model: "", color: "" });
+      setCustomerForm({ phone: "", email: "", plateNumber: "", type: "", brand: "", model: "" });
       fetchVehicles();
     }
     setSaving(false);
@@ -180,7 +176,7 @@ export default function VehiclesPage() {
   const openEdit = (v: Vehicle) => {
     setEditVehicle(v);
     setForm({
-      customerId: v.customer.id,
+      customerId: v.customer?.id ?? "",
       plateNumber: v.plateNumber,
       type: v.type || "",
       brand: v.brand || "",
@@ -197,41 +193,40 @@ export default function VehiclesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Kendaraan</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Kelola data kendaraan dan pemilik
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={openAddExisting}>
-            Tambah Kendaraan
-          </Button>
-          <Button onClick={() => setShowCustomerModal(true)}>
-            Customer Baru + Kendaraan
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Kendaraan"
+        description="Kelola data kendaraan dan pemilik"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={openAddExisting}>
+              Tambah Kendaraan
+            </Button>
+            <Button onClick={() => setShowCustomerModal(true)}>
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Customer Baru + Kendaraan</span>
+              <span className="sm:hidden">Baru</span>
+            </Button>
+          </div>
+        }
+      />
 
       {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
-          placeholder="Cari plat nomor, merek, atau nama customer..."
+          placeholder="Cari plat nomor, merek, atau no HP..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="h-10 w-full rounded-lg border border-input bg-background pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="h-11 w-full rounded-xl border border-input bg-background pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 sm:max-w-md"
         />
       </div>
 
-      {/* Table */}
+      {/* Content */}
       {loading ? (
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />
+            <div key={i} className="h-16 animate-pulse rounded-2xl bg-muted" />
           ))}
         </div>
       ) : vehicles.length === 0 ? (
@@ -246,140 +241,117 @@ export default function VehiclesPage() {
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Plat Nomor
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Kendaraan
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Pemilik
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Kontak
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    WO
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Aksi
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {vehicles.map((v) => (
-                  <tr key={v.id} className="transition-colors hover:bg-muted/30">
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span className="rounded-md bg-muted px-2.5 py-1 font-mono text-sm font-semibold text-foreground">
-                        {v.plateNumber}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground">
-                      <div>
-                        {[v.brand, v.model].filter(Boolean).join(" ") || "-"}
-                      </div>
-                      {v.color && (
-                        <span className="text-xs text-muted-foreground">
-                          {v.color}
-                        </span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                          <User className="h-3.5 w-3.5 text-primary" />
-                        </div>
-                        <span className="text-sm font-medium text-foreground">
-                          {v.customer.name}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <Phone className="h-3.5 w-3.5" />
-                        {v.customer.phone}
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <Badge variant={v._count.workOrders > 0 ? "primary" : "default"}>
-                        {v._count.workOrders}
-                      </Badge>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openEdit(v)}
-                          className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(v.id)}
-                          className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
+        <>
+          {/* Desktop Table */}
+          <div className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Plat Nomor</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Kendaraan</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Kontak</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">WO</th>
+                    <th className="px-6 py-3.5 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Aksi</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {vehicles.map((v) => (
+                    <tr key={v.id} className="transition-colors hover:bg-muted/30">
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <span className="rounded-lg bg-muted px-2.5 py-1 font-mono text-sm font-semibold text-foreground">
+                          {v.plateNumber}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <Phone className="h-3.5 w-3.5" />
+                          {v.customer?.phone ?? "-"}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <Badge variant={v._count.workOrders > 0 ? "primary" : "default"}>
+                          {v._count.workOrders}
+                        </Badge>
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openEdit(v)} className="rounded-xl p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleDelete(v.id)} className="rounded-xl p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {/* Mobile Card List */}
+          <div className="space-y-3 md:hidden">
+            {vehicles.map((v) => (
+              <div key={v.id} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <span className="inline-block rounded-lg bg-primary/10 px-3 py-1 font-mono text-sm font-bold text-primary">
+                      {v.plateNumber}
+                    </span>
+                    <p className="text-sm font-medium text-foreground">
+                      {[v.brand, v.model].filter(Boolean).join(" ") || "-"}
+                    </p>
+                  </div>
+                  <Badge variant={v._count.workOrders > 0 ? "primary" : "default"}>
+                    {v._count.workOrders} WO
+                  </Badge>
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Phone className="h-3.5 w-3.5" />
+                  <span>{v.customer?.phone ?? "-"}</span>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1" onClick={() => openEdit(v)}>
+                    <Edit className="h-3.5 w-3.5" /> Edit
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleDelete(v.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
-      {/* Add Vehicle to Existing Customer Modal */}
-      <Modal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title="Tambah Kendaraan"
-        description="Tambahkan kendaraan ke customer yang sudah ada"
-      >
+      {/* Add Vehicle Modal */}
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Tambah Kendaraan" description="Tambahkan kendaraan ke customer yang sudah ada">
         <form onSubmit={handleAddVehicle} className="space-y-4">
-          <Select
-            label="Customer"
-            id="customerId"
-            value={form.customerId}
-            onChange={(e) => setForm({ ...form, customerId: e.target.value })}
-            options={customers.map((c) => ({ value: c.id, label: `${c.name} — ${c.phone}` }))}
-            placeholder="Pilih customer"
-            required
-          />
+          <Select label="Kontak" id="customerId" value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}
+            options={customers.map((c) => ({ value: c.id, label: `${c.phone}` }))} placeholder="Pilih kontak" required />
           <Input label="Plat Nomor" id="plate" value={form.plateNumber} onChange={(e) => setForm({ ...form, plateNumber: e.target.value })} placeholder="B 1234 ABC" required />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Input label="Merek" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} placeholder="Toyota" />
             <Input label="Model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="Avanza" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-1">
             <Input label="Tipe" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} placeholder="MPV" />
-            <Input label="Warna" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="Hitam" />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setShowModal(false)}>Batal</Button>
-            <Button type="submit" loading={saving}>Simpan</Button>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" type="button" onClick={() => setShowModal(false)} fullWidth className="sm:w-auto">Batal</Button>
+            <Button type="submit" loading={saving} fullWidth className="sm:w-auto">Simpan</Button>
           </div>
         </form>
       </Modal>
 
-      {/* Add New Customer + Vehicle Modal */}
-      <Modal
-        isOpen={showCustomerModal}
-        onClose={() => setShowCustomerModal(false)}
-        title="Customer Baru + Kendaraan"
-        description="Daftarkan customer baru beserta kendaraannya"
-        size="lg"
-      >
+      {/* New Customer + Vehicle Modal */}
+      <Modal isOpen={showCustomerModal} onClose={() => setShowCustomerModal(false)} title="Customer Baru + Kendaraan" description="Daftarkan customer baru beserta kendaraannya" size="lg">
         <form onSubmit={handleAddCustomerVehicle} className="space-y-5">
           <div>
-            <h3 className="mb-3 text-sm font-semibold text-foreground">Data Customer</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input label="Nama" value={customerForm.name} onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })} placeholder="Nama lengkap" required />
+            <h3 className="mb-3 text-sm font-semibold text-foreground">Data Kontak</h3>
+            <div className="grid gap-3 sm:grid-cols-1">
               <Input label="No. HP" value={customerForm.phone} onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })} placeholder="08xxxxxxxxxx" required />
             </div>
             <div className="mt-3">
@@ -390,41 +362,36 @@ export default function VehiclesPage() {
           <div>
             <h3 className="mb-3 text-sm font-semibold text-foreground">Data Kendaraan</h3>
             <Input label="Plat Nomor" value={customerForm.plateNumber} onChange={(e) => setCustomerForm({ ...customerForm, plateNumber: e.target.value })} placeholder="B 1234 ABC" required />
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Input label="Merek" value={customerForm.brand} onChange={(e) => setCustomerForm({ ...customerForm, brand: e.target.value })} placeholder="Toyota" />
               <Input label="Model" value={customerForm.model} onChange={(e) => setCustomerForm({ ...customerForm, model: e.target.value })} placeholder="Avanza" />
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-1">
               <Input label="Tipe" value={customerForm.type} onChange={(e) => setCustomerForm({ ...customerForm, type: e.target.value })} placeholder="MPV" />
-              <Input label="Warna" value={customerForm.color} onChange={(e) => setCustomerForm({ ...customerForm, color: e.target.value })} placeholder="Hitam" />
             </div>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setShowCustomerModal(false)}>Batal</Button>
-            <Button type="submit" loading={saving}>Simpan</Button>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" type="button" onClick={() => setShowCustomerModal(false)} fullWidth className="sm:w-auto">Batal</Button>
+            <Button type="submit" loading={saving} fullWidth className="sm:w-auto">Simpan</Button>
           </div>
         </form>
       </Modal>
 
       {/* Edit Vehicle Modal */}
-      <Modal
-        isOpen={!!editVehicle}
-        onClose={() => setEditVehicle(null)}
-        title="Edit Kendaraan"
-      >
+      <Modal isOpen={!!editVehicle} onClose={() => setEditVehicle(null)} title="Edit Kendaraan">
         <form onSubmit={handleEdit} className="space-y-4">
           <Input label="Plat Nomor" value={form.plateNumber} onChange={(e) => setForm({ ...form, plateNumber: e.target.value })} required />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Input label="Merek" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
             <Input label="Model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Input label="Tipe" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} />
             <Input label="Warna" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setEditVehicle(null)}>Batal</Button>
-            <Button type="submit" loading={saving}>Simpan</Button>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" type="button" onClick={() => setEditVehicle(null)} fullWidth className="sm:w-auto">Batal</Button>
+            <Button type="submit" loading={saving} fullWidth className="sm:w-auto">Simpan</Button>
           </div>
         </form>
       </Modal>

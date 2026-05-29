@@ -59,7 +59,12 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch (e) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const {
     vehicleId,
     employeeId,
@@ -73,6 +78,21 @@ export async function POST(req: NextRequest) {
       { error: "Kendaraan, tipe layanan, dan minimal satu layanan wajib dipilih" },
       { status: 400 }
     );
+  }
+
+  if (employeeId) {
+    const activeWoCount = await prisma.workOrder.count({
+      where: {
+        employeeId,
+        status: { in: ["ANTRI", "PROSES"] }
+      }
+    });
+    if (activeWoCount > 0) {
+      return NextResponse.json(
+        { error: "Karyawan ini sedang mengerjakan Work Order lain" },
+        { status: 400 }
+      );
+    }
   }
 
   // Fetch selected services to calculate prices

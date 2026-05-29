@@ -6,6 +6,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "destructive" | "ghost" | "outline";
   size?: "sm" | "md" | "lg";
   loading?: boolean;
+  fullWidth?: boolean;
 }
 
 const variantStyles = {
@@ -21,9 +22,9 @@ const variantStyles = {
 };
 
 const sizeStyles = {
-  sm: "h-8 px-3 text-xs rounded-md gap-1.5",
-  md: "h-10 px-4 text-sm rounded-lg gap-2",
-  lg: "h-11 px-6 text-sm rounded-lg gap-2",
+  sm: "h-9 px-3.5 text-xs rounded-xl gap-1.5",
+  md: "h-10 px-4 text-sm rounded-xl gap-2",
+  lg: "h-11 px-6 text-sm rounded-xl gap-2",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -33,6 +34,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       variant = "primary",
       size = "md",
       loading = false,
+      fullWidth = false,
       disabled,
       children,
       ...props
@@ -46,6 +48,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           "inline-flex items-center justify-center font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:pointer-events-none disabled:opacity-50",
           variantStyles[variant],
           sizeStyles[size],
+          fullWidth && "w-full",
           className
         )}
         disabled={disabled || loading}

@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
             vehicle: {
               select: {
                 plateNumber: true,
-                customer: { select: { name: true } },
+                customer: { select: { phone: true } },
               },
             },
           },

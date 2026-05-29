@@ -49,12 +49,17 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch (e) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { category, amount, description, date } = body;
 
-  if (!category || !amount) {
+  if (!category || amount === undefined || amount <= 0) {
     return NextResponse.json(
-      { error: "Kategori dan jumlah wajib diisi" },
+      { error: "Kategori wajib diisi dan jumlah harus lebih dari 0" },
       { status: 400 }
     );
   }

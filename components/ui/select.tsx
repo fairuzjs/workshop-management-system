@@ -24,7 +24,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           ref={ref}
           id={id}
           className={cn(
-            "flex h-10 w-full rounded-lg border bg-background px-3 text-sm text-foreground transition-colors appearance-none",
+            "flex h-11 w-full rounded-xl border bg-background px-4 text-sm text-foreground transition-colors appearance-none",
             "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
             error
               ? "border-destructive focus:ring-destructive/20 focus:border-destructive"

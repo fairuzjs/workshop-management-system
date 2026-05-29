@@ -6,67 +6,69 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
+import { StatCard } from "@/components/dashboard/stat-card";
+import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { formatCurrency } from "@/lib/utils";
 import {
   Package,
   Plus,
+  Minus,
   Search,
   Edit,
-  Trash2,
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
   ArrowDownToLine,
   ArrowUpFromLine,
-  AlertTriangle,
-  History,
 } from "lucide-react";
 
 interface InventoryItem {
   id: string;
   name: string;
-  category: string | null;
   qty: number;
   unit: string;
   minStock: number;
   price: string;
 }
 
-interface StockLog {
-  id: string;
-  qty: number;
-  type: "IN" | "OUT";
-  notes: string | null;
-  createdAt: string;
+interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 }
 
 export default function InventoryPage() {
   const router = useRouter();
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [pagination, setPagination] = useState<PaginationInfo>({
+    page: 1, limit: 20, total: 0, totalPages: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [showLowStock, setShowLowStock] = useState(false);
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
-  const [stockItem, setStockItem] = useState<InventoryItem | null>(null);
-  const [logItem, setLogItem] = useState<InventoryItem | null>(null);
-  const [logs, setLogs] = useState<StockLog[]>([]);
-
-  // Forms
-  const [form, setForm] = useState({
-    name: "", category: "", qty: "", unit: "", minStock: "", price: "",
-  });
-  const [stockForm, setStockForm] = useState({
-    qty: "", type: "IN" as "IN" | "OUT", notes: "",
-  });
+  const [stockModal, setStockModal] = useState<{
+    item: InventoryItem;
+    type: "IN" | "OUT";
+  } | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const fetchItems = useCallback(async () => {
+  const [form, setForm] = useState({
+    name: "", unit: "pcs", qty: "", minStock: "5", price: "",
+  });
+  const [stockForm, setStockForm] = useState({ qty: "" });
+
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
-      if (showLowStock) params.set("lowStock", "true");
+      params.set("page", String(pagination.page));
+
       const res = await fetch(`/api/inventory?${params}`);
       if (!res.ok) {
         if (res.status === 401) {
@@ -76,15 +78,23 @@ export default function InventoryPage() {
         throw new Error(`Failed to fetch inventory: ${res.statusText}`);
       }
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      if (Array.isArray(data)) {
+        setItems(data);
+        setPagination({ page: 1, limit: 20, total: data.length, totalPages: 1 });
+      } else {
+        setItems(data.data);
+        setPagination(data.pagination);
+      }
     } catch (error) {
-      console.error("Error fetching inventory items:", error);
+      console.error("Error fetching inventory:", error);
     } finally {
       setLoading(false);
     }
-  }, [search, showLowStock, router]);
+  }, [search, pagination.page, router]);
 
-  useEffect(() => { fetchItems(); }, [fetchItems]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,16 +103,17 @@ export default function InventoryPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...form,
-        qty: parseInt(form.qty) || 0,
-        minStock: parseInt(form.minStock) || 0,
-        price: parseFloat(form.price) || 0,
+        name: form.name,
+        unit: form.unit,
+        qty: parseInt(form.qty),
+        minStock: parseInt(form.minStock),
+        price: parseFloat(form.price),
       }),
     });
     if (res.ok) {
       setShowCreate(false);
-      setForm({ name: "", category: "", qty: "", unit: "", minStock: "", price: "" });
-      fetchItems();
+      setForm({ name: "", unit: "pcs", qty: "", minStock: "5", price: "" });
+      fetchData();
     }
     setSaving(false);
   };
@@ -116,234 +127,267 @@ export default function InventoryPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: form.name,
-        category: form.category || null,
         unit: form.unit,
-        minStock: parseInt(form.minStock) || 0,
-        price: parseFloat(form.price) || 0,
+        minStock: parseInt(form.minStock),
+        price: parseFloat(form.price),
       }),
     });
     setEditItem(null);
-    fetchItems();
+    fetchData();
     setSaving(false);
   };
 
-  const handleStockUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stockItem) return;
+  const handleStockUpdate = async () => {
+    if (!stockModal) return;
     setSaving(true);
-    const res = await fetch(`/api/inventory/${stockItem.id}/stock`, {
+    await fetch(`/api/inventory/${stockModal.item.id}/stock`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        type: stockModal.type,
         qty: parseInt(stockForm.qty),
-        type: stockForm.type,
-        notes: stockForm.notes || null,
       }),
     });
-    if (res.ok) {
-      setStockItem(null);
-      setStockForm({ qty: "", type: "IN", notes: "" });
-      fetchItems();
-    } else {
-      const err = await res.json();
-      alert(err.error);
-    }
+    setStockModal(null);
+    setStockForm({ qty: "" });
+    fetchData();
     setSaving(false);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Yakin ingin menghapus item ini?")) return;
-    await fetch(`/api/inventory/${id}`, { method: "DELETE" });
-    fetchItems();
   };
 
   const openEdit = (item: InventoryItem) => {
     setForm({
       name: item.name,
-      category: item.category || "",
-      qty: String(item.qty),
       unit: item.unit,
+      qty: String(item.qty),
       minStock: String(item.minStock),
       price: String(item.price),
     });
     setEditItem(item);
   };
 
-  const openLogs = async (item: InventoryItem) => {
-    setLogItem(item);
-    try {
-      const res = await fetch(`/api/inventory/${item.id}`);
-      if (!res.ok) {
-        if (res.status === 401) {
-          router.push("/login");
-          return;
-        }
-        throw new Error(`Failed to fetch logs: ${res.statusText}`);
-      }
-      const data = await res.json();
-      setLogs(data.logs || []);
-    } catch (error) {
-      console.error("Error fetching inventory item logs:", error);
-    }
-  };
-
-  const lowStockCount = items.filter((i) => i.qty <= i.minStock).length;
+  const lowStockItems = items.filter((i) => i.qty <= i.minStock);
+  const totalValue = items.reduce(
+    (sum, i) => sum + i.qty * Number(i.price),
+    0
+  );
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Inventory</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Kelola stok sparepart dan bahan
-          </p>
-        </div>
-        <Button onClick={() => { setForm({ name: "", category: "", qty: "", unit: "", minStock: "", price: "" }); setShowCreate(true); }}>
-          <Plus className="h-4 w-4" /> Tambah Item
-        </Button>
+      <PageHeader
+        title="Inventory"
+        description="Kelola stok sparepart dan bahan"
+        actions={
+          <Button onClick={() => {
+            setForm({ name: "", unit: "pcs", qty: "", minStock: "5", price: "" });
+            setShowCreate(true);
+          }}>
+            <Plus className="h-4 w-4" />
+            Tambah Item
+          </Button>
+        }
+      />
+
+      {/* Stats */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          title="Total Item"
+          value={items.length}
+          icon={Package}
+          variant="primary"
+        />
+        <StatCard
+          title="Stok Rendah"
+          value={lowStockItems.length}
+          icon={AlertTriangle}
+          variant={lowStockItems.length > 0 ? "warning" : "default"}
+        />
+        <StatCard
+          title="Total Nilai Stok"
+          value={formatCurrency(totalValue)}
+          icon={Package}
+          variant="success"
+        />
       </div>
 
-      {/* Low stock alert */}
-      {lowStockCount > 0 && !showLowStock && (
-        <div className="flex items-center gap-3 rounded-xl border border-warning/20 bg-warning/5 px-4 py-3">
-          <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-foreground">
-              {lowStockCount} item memiliki stok rendah
-            </p>
+      {/* Low Stock Warning */}
+      {lowStockItems.length > 0 && (
+        <div className="rounded-2xl border border-warning/20 bg-warning/5 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-warning">
+            <AlertTriangle className="h-4 w-4" />
+            {lowStockItems.length} item stok rendah
           </div>
-          <Button variant="outline" size="sm" onClick={() => setShowLowStock(true)}>
-            Lihat
-          </Button>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {lowStockItems.slice(0, 5).map((i) => (
+              <span key={i.id} className="rounded-lg bg-warning/10 px-3 py-1 text-xs font-medium text-warning">
+                {i.name} ({i.qty}/{i.minStock} {i.unit})
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Cari nama atau kategori..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-10 w-full rounded-lg border border-input bg-background pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-        <button
-          onClick={() => setShowLowStock(!showLowStock)}
-          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-            showLowStock
-              ? "border-warning bg-warning/10 text-warning"
-              : "border-input text-muted-foreground hover:bg-accent"
-          }`}
-        >
-          <AlertTriangle className="h-4 w-4" />
-          Stok Rendah
-        </button>
+      {/* Search */}
+      <div className="relative sm:max-w-md">
+        <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Cari item..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-11 w-full rounded-xl border border-input bg-background pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
       </div>
 
-      {/* Table */}
+      {/* Content */}
       {loading ? (
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />
+            <div key={i} className="h-16 animate-pulse rounded-2xl bg-muted" />
           ))}
         </div>
       ) : items.length === 0 ? (
         <EmptyState
           icon={Package}
           title="Belum ada item inventory"
-          description="Tambahkan sparepart atau bahan untuk mulai"
-          action={<Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> Tambah Item</Button>}
+          description="Tambahkan item sparepart atau bahan"
+          action={
+            <Button onClick={() => setShowCreate(true)}>
+              <Plus className="h-4 w-4" /> Tambah Item
+            </Button>
+          }
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Nama</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Kategori</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground">Stok</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground">Min</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Harga</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {items.map((item) => {
-                  const isLow = item.qty <= item.minStock;
-                  return (
-                    <tr key={item.id} className="transition-colors hover:bg-muted/30">
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span className="text-sm font-medium text-foreground">{item.name}</span>
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        {item.category ? (
-                          <Badge variant="default">{item.category}</Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-center">
-                        <span className={`text-sm font-bold ${isLow ? "text-destructive" : "text-foreground"}`}>
-                          {item.qty}
-                        </span>
-                        <span className="ml-1 text-xs text-muted-foreground">{item.unit}</span>
-                        {isLow && <AlertTriangle className="inline-block ml-1.5 h-3.5 w-3.5 text-destructive" />}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-center text-sm text-muted-foreground">
-                        {item.minStock}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-foreground">
-                        {formatCurrency(item.price)}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => { setStockForm({ qty: "", type: "IN", notes: "" }); setStockItem(item); }} className="rounded-lg p-2 text-success hover:bg-success/10" title="Stok Masuk">
-                            <ArrowDownToLine className="h-4 w-4" />
-                          </button>
-                          <button onClick={() => { setStockForm({ qty: "", type: "OUT", notes: "" }); setStockItem(item); }} className="rounded-lg p-2 text-warning hover:bg-warning/10" title="Stok Keluar">
-                            <ArrowUpFromLine className="h-4 w-4" />
-                          </button>
-                          <button onClick={() => openLogs(item)} className="rounded-lg p-2 text-muted-foreground hover:bg-accent" title="Riwayat">
-                            <History className="h-4 w-4" />
-                          </button>
-                          <button onClick={() => openEdit(item)} className="rounded-lg p-2 text-muted-foreground hover:bg-accent" title="Edit">
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button onClick={() => handleDelete(item.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="Hapus">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <>
+          {/* Desktop Table */}
+          <div className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Item</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Stok</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Min</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Harga</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Nilai</th>
+                    <th className="px-6 py-3.5 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {items.map((item) => {
+                    const isLow = item.qty <= item.minStock;
+                    return (
+                      <tr key={item.id} className="transition-colors hover:bg-muted/30">
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span className="text-sm font-medium text-foreground">
+                            {item.name}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm font-semibold ${isLow ? "text-destructive" : "text-foreground"}`}>
+                              {item.qty}
+                            </span>
+                            <span className="text-xs text-muted-foreground">{item.unit}</span>
+                            {isLow && (
+                              <Badge variant="warning">Low</Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
+                          {item.minStock} {item.unit}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground">
+                          {formatCurrency(item.price)}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-foreground">
+                          {formatCurrency(item.qty * Number(item.price))}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => { setStockForm({ qty: "" }); setStockModal({ item, type: "IN" }); }}
+                              className="rounded-xl p-2 text-success hover:bg-success/10" title="Stock In">
+                              <ArrowDownToLine className="h-4 w-4" />
+                            </button>
+                            <button onClick={() => { setStockForm({ qty: "" }); setStockModal({ item, type: "OUT" }); }}
+                              className="rounded-xl p-2 text-warning hover:bg-warning/10" title="Stock Out">
+                              <ArrowUpFromLine className="h-4 w-4" />
+                            </button>
+                            <button onClick={() => openEdit(item)}
+                              className="rounded-xl p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
+                              <Edit className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {/* Mobile Card List */}
+          <div className="space-y-3 md:hidden">
+            {items.map((item) => {
+              const isLow = item.qty <= item.minStock;
+              const pct = Math.min((item.qty / Math.max(item.minStock * 3, 1)) * 100, 100);
+              return (
+                <div key={item.id} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">{formatCurrency(item.price)}/{item.unit}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-lg font-bold ${isLow ? "text-destructive" : "text-foreground"}`}>
+                        {item.qty}
+                      </span>
+                      <span className="ml-1 text-xs text-muted-foreground">{item.unit}</span>
+                      {isLow && <Badge variant="warning" className="ml-2">Low</Badge>}
+                    </div>
+                  </div>
+                  {/* Stock bar */}
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        isLow ? "bg-destructive" : pct > 60 ? "bg-success" : "bg-warning"
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => { setStockForm({ qty: "" }); setStockModal({ item, type: "IN" }); }}>
+                      <ArrowDownToLine className="h-3.5 w-3.5" /> In
+                    </Button>
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => { setStockForm({ qty: "" }); setStockModal({ item, type: "OUT" }); }}>
+                      <ArrowUpFromLine className="h-3.5 w-3.5" /> Out
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => openEdit(item)}>
+                      <Edit className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* Create Modal */}
-      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Tambah Item Baru" description="Masukkan data sparepart atau bahan">
+      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Tambah Item" description="Tambahkan item baru ke inventory">
         <form onSubmit={handleCreate} className="space-y-4">
-          <Input label="Nama Item" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Oli Mesin 1L" required />
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Kategori" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Oli" />
-            <Input label="Satuan" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="liter, pcs, set" required />
+          <Input label="Nama Item" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Oli Mesin" required />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input label="Satuan" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="pcs" required />
+            <Input label="Stok Awal" type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} placeholder="0" required />
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Input label="Stok Awal" type="number" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} placeholder="0" />
-            <Input label="Min. Stok" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} placeholder="5" />
-            <Input label="Harga Satuan" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="85000" required />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input label="Stok Minimum" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} placeholder="5" required />
+            <Input label="Harga Satuan (Rp)" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="50000" required />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setShowCreate(false)}>Batal</Button>
-            <Button type="submit" loading={saving}>Simpan</Button>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" type="button" onClick={() => setShowCreate(false)} fullWidth className="sm:w-auto">Batal</Button>
+            <Button type="submit" loading={saving} fullWidth className="sm:w-auto">Simpan</Button>
           </div>
         </form>
       </Modal>
@@ -352,81 +396,30 @@ export default function InventoryPage() {
       <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">
         <form onSubmit={handleEdit} className="space-y-4">
           <Input label="Nama Item" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Kategori" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+          <div className="grid gap-3 sm:grid-cols-2">
             <Input label="Satuan" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} required />
+            <Input label="Stok Minimum" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} required />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Min. Stok" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} />
-            <Input label="Harga Satuan" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setEditItem(null)}>Batal</Button>
-            <Button type="submit" loading={saving}>Simpan</Button>
+          <Input label="Harga Satuan (Rp)" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" type="button" onClick={() => setEditItem(null)} fullWidth className="sm:w-auto">Batal</Button>
+            <Button type="submit" loading={saving} fullWidth className="sm:w-auto">Simpan</Button>
           </div>
         </form>
       </Modal>
 
-      {/* Stock In/Out Modal */}
-      <Modal isOpen={!!stockItem} onClose={() => setStockItem(null)} title={`Stok ${stockForm.type === "IN" ? "Masuk" : "Keluar"} — ${stockItem?.name}`}>
-        <form onSubmit={handleStockUpdate} className="space-y-4">
-          <div className="flex rounded-lg border border-border p-1">
-            <button type="button" onClick={() => setStockForm({ ...stockForm, type: "IN" })}
-              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${stockForm.type === "IN" ? "bg-success text-success-foreground" : "text-muted-foreground"}`}>
-              Stok Masuk
-            </button>
-            <button type="button" onClick={() => setStockForm({ ...stockForm, type: "OUT" })}
-              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${stockForm.type === "OUT" ? "bg-warning text-warning-foreground" : "text-muted-foreground"}`}>
-              Stok Keluar
-            </button>
+      {/* Stock Update Modal */}
+      <Modal isOpen={!!stockModal} onClose={() => setStockModal(null)} title={`Stock ${stockModal?.type === "IN" ? "Masuk" : "Keluar"}`}
+        description={stockModal ? `${stockModal.item.name} — Stok saat ini: ${stockModal.item.qty} ${stockModal.item.unit}` : ""}>
+        <div className="space-y-4">
+          <Input label="Jumlah" type="number" value={stockForm.qty} onChange={(e) => setStockForm({ qty: e.target.value })} placeholder="0" min={1} required />
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setStockModal(null)} fullWidth className="sm:w-auto">Batal</Button>
+            <Button onClick={handleStockUpdate} loading={saving} disabled={!stockForm.qty} fullWidth className="sm:w-auto">
+              {stockModal?.type === "IN" ? "Stock In" : "Stock Out"}
+            </Button>
           </div>
-          <div className="rounded-lg bg-muted/50 p-3 text-center">
-            <p className="text-xs text-muted-foreground">Stok saat ini</p>
-            <p className="text-2xl font-bold text-foreground">{stockItem?.qty} <span className="text-sm text-muted-foreground">{stockItem?.unit}</span></p>
-          </div>
-          <Input label="Jumlah" type="number" value={stockForm.qty} onChange={(e) => setStockForm({ ...stockForm, qty: e.target.value })} placeholder="10" required min={1} />
-          <Input label="Catatan (opsional)" value={stockForm.notes} onChange={(e) => setStockForm({ ...stockForm, notes: e.target.value })} placeholder="Beli dari supplier" />
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setStockItem(null)}>Batal</Button>
-            <Button type="submit" loading={saving}>{stockForm.type === "IN" ? "Tambah Stok" : "Kurangi Stok"}</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Stock Log Modal */}
-      <Modal isOpen={!!logItem} onClose={() => setLogItem(null)} title={`Riwayat Stok — ${logItem?.name}`} size="lg">
-        {logs.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Belum ada riwayat stok</p>
-        ) : (
-          <div className="max-h-[400px] overflow-y-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-muted-foreground">Tipe</th>
-                  <th className="px-4 py-2 text-center text-xs font-medium uppercase text-muted-foreground">Qty</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-muted-foreground">Catatan</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-muted-foreground">Tanggal</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {logs.map((log) => (
-                  <tr key={log.id}>
-                    <td className="px-4 py-3">
-                      <Badge variant={log.type === "IN" ? "success" : "warning"}>
-                        {log.type === "IN" ? "Masuk" : "Keluar"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-center text-sm font-medium text-foreground">{log.qty}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">{log.notes || "-"}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {new Date(log.createdAt).toLocaleString("id-ID")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        </div>
       </Modal>
     </div>
   );

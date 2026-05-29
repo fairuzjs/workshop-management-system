@@ -102,7 +102,7 @@ model Employee {
 
 model Customer {
   id        String   @id @default(uuid())
-  name      String
+  name      String?
   phone     String
   email     String?
   createdAt DateTime @default(now()) @map("created_at")
@@ -178,13 +178,14 @@ model WorkOrder {
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
-  vehicle     Vehicle            @relation(fields: [vehicleId], references: [id])
-  employee    Employee?          @relation(fields: [employeeId], references: [id])
-  user        User               @relation(fields: [userId], references: [id])
-  services    WorkOrderService[]
-  parts       WorkOrderPart[]
-  transaction Transaction?
-  earnings    EmployeeEarning[]
+  vehicle      Vehicle                @relation(fields: [vehicleId], references: [id])
+  employee     Employee?              @relation(fields: [employeeId], references: [id])
+  user         User                   @relation(fields: [userId], references: [id])
+  services     WorkOrderService[]
+  parts        WorkOrderPart[]
+  transaction  Transaction?
+  earnings     EmployeeEarning[]
+  historyItems WorkOrderHistoryItem[]
 
   @@map("work_orders")
 }
@@ -322,4 +323,24 @@ model MonthlyClosing {
 
   @@unique([month, year])
   @@map("monthly_closings")
+}
+
+// ============================================
+// WORK ORDER HISTORY (MANUAL ITEMS)
+// ============================================
+
+model WorkOrderHistoryItem {
+  id          String @id @default(uuid())
+  workOrderId String @map("work_order_id")
+
+  title       String
+  description String?
+  price       Decimal @default(0) @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@map("work_order_history_items")
 }

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
+import { StatCard } from "@/components/dashboard/stat-card";
+import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
@@ -133,12 +135,12 @@ export default function ExpensesPage() {
 
   const ExpenseForm = ({ onSubmit, onCancel }: { onSubmit: (e: React.FormEvent) => void; onCancel: () => void }) => (
     <form onSubmit={onSubmit} className="space-y-4">
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <label className="text-sm font-medium text-foreground">Kategori</label>
         <div className="flex flex-wrap gap-2">
           {expenseCategories.map((cat) => (
             <button key={cat} type="button" onClick={() => setForm({ ...form, category: cat })}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+              className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
                 form.category === cat ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/30"
               }`}
             >
@@ -150,97 +152,137 @@ export default function ExpensesPage() {
           <Input placeholder="Atau ketik kategori lain..." value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
         )}
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Input label="Jumlah (Rp)" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="100000" required />
         <Input label="Tanggal" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
       </div>
       <Textarea label="Keterangan (opsional)" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Detail pengeluaran..." />
-      <div className="flex justify-end gap-2 pt-2">
-        <Button variant="outline" type="button" onClick={onCancel}>Batal</Button>
-        <Button type="submit" loading={saving}>Simpan</Button>
+      <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+        <Button variant="outline" type="button" onClick={onCancel} fullWidth className="sm:w-auto">Batal</Button>
+        <Button type="submit" loading={saving} fullWidth className="sm:w-auto">Simpan</Button>
       </div>
     </form>
   );
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Pengeluaran</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Kelola pengeluaran operasional</p>
-        </div>
-        <Button onClick={openCreate}><Plus className="h-4 w-4" /> Tambah Pengeluaran</Button>
-      </div>
+      <PageHeader
+        title="Pengeluaran"
+        description="Kelola pengeluaran operasional"
+        actions={
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" /> Tambah Pengeluaran
+          </Button>
+        }
+      />
 
       {/* Summary Card */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-destructive/10">
-            <TrendingDown className="h-5 w-5 text-destructive" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Total Pengeluaran</p>
-            <p className="text-2xl font-bold text-foreground">{formatCurrency(totalAmount)}</p>
-          </div>
-        </div>
-      </div>
+      <StatCard
+        title="Total Pengeluaran"
+        value={formatCurrency(totalAmount)}
+        icon={TrendingDown}
+        variant="destructive"
+      />
 
       {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="relative sm:max-w-md">
+        <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input type="text" placeholder="Cari kategori atau keterangan..." value={search} onChange={(e) => setSearch(e.target.value)}
-          className="h-10 w-full rounded-lg border border-input bg-background pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="h-11 w-full rounded-xl border border-input bg-background pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
       </div>
 
-      {/* Table */}
+      {/* Content */}
       {loading ? (
-        <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />)}</div>
+        <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-16 animate-pulse rounded-2xl bg-muted" />)}</div>
       ) : expenses.length === 0 ? (
         <EmptyState icon={Wallet} title="Belum ada pengeluaran" description="Catat pengeluaran operasional bengkel" action={<Button onClick={openCreate}><Plus className="h-4 w-4" /> Tambah</Button>} />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Tanggal</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Kategori</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Keterangan</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Jumlah</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {expenses.map((item) => (
-                  <tr key={item.id} className="transition-colors hover:bg-muted/30">
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground">{formatDate(item.date)}</td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span className="rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs font-medium text-foreground">{item.category}</span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground max-w-xs truncate">{item.description || "-"}</td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-destructive">{formatCurrency(item.amount)}</td>
-                    <td className="whitespace-nowrap px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(item)} className="rounded-lg p-2 text-muted-foreground hover:bg-accent"><Edit className="h-4 w-4" /></button>
-                        <button onClick={() => handleDelete(item.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
-                      </div>
-                    </td>
+        <>
+          {/* Desktop Table */}
+          <div className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Tanggal</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Kategori</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Keterangan</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Jumlah</th>
+                    <th className="px-6 py-3.5 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Aksi</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-border px-6 py-3">
-              <p className="text-sm text-muted-foreground">{(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} dari {pagination.total}</p>
-              <div className="flex gap-1">
-                <button onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))} disabled={pagination.page <= 1} className="rounded-lg p-2 text-muted-foreground hover:bg-accent disabled:opacity-50"><ChevronLeft className="h-4 w-4" /></button>
-                <button onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))} disabled={pagination.page >= pagination.totalPages} className="rounded-lg p-2 text-muted-foreground hover:bg-accent disabled:opacity-50"><ChevronRight className="h-4 w-4" /></button>
-              </div>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {expenses.map((item) => (
+                    <tr key={item.id} className="transition-colors hover:bg-muted/30">
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground">{formatDate(item.date)}</td>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <span className="rounded-xl border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-foreground">{item.category}</span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground max-w-xs truncate">{item.description || "-"}</td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-destructive">{formatCurrency(item.amount)}</td>
+                      <td className="whitespace-nowrap px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openEdit(item)} className="rounded-xl p-2 text-muted-foreground hover:bg-accent hover:text-foreground">
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleDelete(item.id)} className="rounded-xl p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
+            {pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-border px-6 py-3">
+                <p className="text-sm text-muted-foreground">{(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} dari {pagination.total}</p>
+                <div className="flex gap-1">
+                  <button onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))} disabled={pagination.page <= 1} className="rounded-xl p-2 text-muted-foreground hover:bg-accent disabled:opacity-50"><ChevronLeft className="h-4 w-4" /></button>
+                  <button onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))} disabled={pagination.page >= pagination.totalPages} className="rounded-xl p-2 text-muted-foreground hover:bg-accent disabled:opacity-50"><ChevronRight className="h-4 w-4" /></button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile Card List */}
+          <div className="space-y-3 md:hidden">
+            {expenses.map((item) => (
+              <div key={item.id} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <span className="rounded-xl border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-foreground">{item.category}</span>
+                    <p className="text-sm text-muted-foreground">{item.description || "-"}</p>
+                  </div>
+                  <span className="text-sm font-bold text-destructive">{formatCurrency(item.amount)}</span>
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">{formatDate(item.date)}</span>
+                  <div className="flex gap-1">
+                    <Button variant="outline" size="sm" onClick={() => openEdit(item)}>
+                      <Edit className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleDelete(item.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-sm text-muted-foreground">{pagination.page}/{pagination.totalPages}</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))} disabled={pagination.page <= 1}><ChevronLeft className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="sm" onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))} disabled={pagination.page >= pagination.totalPages}><ChevronRight className="h-4 w-4" /></Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Tambah Pengeluaran" description="Catat pengeluaran operasional">
