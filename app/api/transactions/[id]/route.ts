@@ -18,8 +18,7 @@ export async function GET(
       workOrder: {
         include: {
           vehicle: { include: { customer: true } },
-          employee: true,
-          services: { include: { service: true } },
+          services: { include: { service: true, employees: { select: { id: true, name: true } } } },
           parts: { include: { inventory: true } },
           historyItems: { orderBy: { createdAt: 'asc' } },
         },

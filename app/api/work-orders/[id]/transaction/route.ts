@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 
-// POST /api/work-orders/[id]/transaction — Create payment
+// POST /api/work-orders/[id]/transaction — Create payment and process items/commissions
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -17,7 +17,7 @@ export async function POST(
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { paymentMethod } = body;
+  const { paymentMethod, jasaItems = [], partItems = [] } = body;
 
   if (!paymentMethod) {
     return NextResponse.json(
@@ -49,15 +49,168 @@ export async function POST(
     );
   }
 
-  const transaction = await prisma.transaction.create({
-    data: {
-      workOrderId: id,
-      amount: workOrder.totalCost,
-      paymentMethod,
-      status: "LUNAS",
-      paidAt: new Date(),
-    },
-  });
+  // Calculate total price to ensure integrity
+  let finalTotalCost = 0;
 
-  return NextResponse.json(transaction, { status: 201 });
+  try {
+    const transactionResult = await prisma.$transaction(async (tx) => {
+      // Fetch cuci commission rules
+      const commissions = await tx.serviceCommission.findMany({ include: { service: true } });
+      const systemSetting = await tx.systemSetting.findUnique({ where: { id: "global" } });
+
+      const defaultServicePct = systemSetting ? Number(systemSetting.serviceCommissionPct) / 100 : 0.55;
+      const defaultPartPct = systemSetting ? Number(systemSetting.partCommissionPct) / 100 : 0.03;
+
+      // 1. Process Jasa (Services & Manual)
+      for (const jasa of jasaItems) {
+        finalTotalCost += Number(jasa.price);
+        
+        // Connect employees
+        const employeeConnects = jasa.employeeIds.map((empId: string) => ({ id: empId }));
+
+        if (jasa.tempId.startsWith("wo-svc-")) {
+          // Update existing service
+          const svcId = jasa.tempId.replace("wo-svc-", "");
+          await tx.workOrderService.update({
+            where: { id: svcId },
+            data: {
+              employees: { set: employeeConnects }
+            }
+          });
+        } else if (jasa.tempId.startsWith("wo-hist-")) {
+          // Update existing history item
+          const histId = jasa.tempId.replace("wo-hist-", "");
+          await tx.workOrderHistoryItem.update({
+            where: { id: histId },
+            data: {
+              employees: { set: employeeConnects }
+            }
+          });
+        } else {
+          // Create new manual history item (manual or cuci preset)
+          await tx.workOrderHistoryItem.create({
+            data: {
+              workOrderId: id,
+              title: jasa.name,
+              price: jasa.price,
+              employees: { connect: employeeConnects }
+            }
+          });
+        }
+
+        // Add commission divided by employees (if any)
+        if (jasa.employeeIds.length > 0) {
+          const now = new Date();
+          
+          let commissionPerPerson = 0;
+          const commRule = commissions.find(c => c.service.name === jasa.name);
+          
+          if (commRule) {
+            commissionPerPerson = Number(commRule.commissionNominal) / jasa.employeeIds.length;
+          } else {
+            commissionPerPerson = (Number(jasa.price) * defaultServicePct) / jasa.employeeIds.length;
+          }
+
+          for (const empId of jasa.employeeIds) {
+            await tx.employeeEarning.create({
+              data: {
+                employeeId: empId,
+                workOrderId: id,
+                amount: commissionPerPerson,
+                earningType: "COMMISSION",
+                month: now.getMonth() + 1,
+                year: now.getFullYear(),
+              }
+            });
+          }
+        }
+      }
+
+      // 2. Process Parts
+      for (const part of partItems) {
+        const itemTotal = Number(part.price) * Number(part.qty);
+        finalTotalCost += itemTotal;
+        
+        const employeeConnects = part.employeeIds.map((empId: string) => ({ id: empId }));
+
+        if (part.tempId.startsWith("wo-part-")) {
+          // Update existing part
+          const partId = part.tempId.replace("wo-part-", "");
+          await tx.workOrderPart.update({
+            where: { id: partId },
+            data: {
+              employees: { set: employeeConnects }
+            }
+          });
+        } else {
+          // Create new part and deduct stock
+          await tx.workOrderPart.create({
+            data: {
+              workOrderId: id,
+              inventoryId: part.inventoryId,
+              qty: part.qty,
+              price: part.price,
+              employees: { connect: employeeConnects }
+            }
+          });
+          await tx.inventory.update({
+            where: { id: part.inventoryId },
+            data: { qty: { decrement: part.qty } }
+          });
+          await tx.inventoryLog.create({
+            data: {
+              inventoryId: part.inventoryId,
+              qty: part.qty,
+              type: "OUT",
+              notes: `Digunakan untuk Work Order ${workOrder.trackingToken}`,
+            }
+          });
+        }
+
+        // Add 3% commission per mechanic for part installation (if any)
+        if (part.employeeIds.length > 0) {
+          const now = new Date();
+          const commissionPerPerson = itemTotal * defaultPartPct; // Dynamic % of part total PER person
+          for (const empId of part.employeeIds) {
+            await tx.employeeEarning.create({
+              data: {
+                employeeId: empId,
+                workOrderId: id,
+                amount: commissionPerPerson,
+                earningType: "COMMISSION",
+                month: now.getMonth() + 1,
+                year: now.getFullYear(),
+              }
+            });
+          }
+        }
+      }
+
+      // 3. Update WorkOrder total cost if it changed
+      if (Number(workOrder.totalCost) !== finalTotalCost) {
+        await tx.workOrder.update({
+          where: { id },
+          data: { totalCost: finalTotalCost }
+        });
+      }
+
+      // 4. Create Transaction record
+      const transaction = await tx.transaction.create({
+        data: {
+          workOrderId: id,
+          amount: finalTotalCost,
+          paymentMethod,
+          status: "LUNAS",
+          paidAt: new Date(),
+        },
+      });
+
+      return transaction;
+    });
+
+    return NextResponse.json(transactionResult, { status: 201 });
+  } catch (error: any) {
+    console.error("Transaction Error:", error);
+    return NextResponse.json({ error: "Gagal memproses transaksi" }, { status: 500 });
+  }
 }

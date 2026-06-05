@@ -45,8 +45,7 @@ interface Employee {
 const steps = [
   { id: 1, title: "Kendaraan", icon: Car },
   { id: 2, title: "Layanan", icon: Wrench },
-  { id: 3, title: "Petugas", icon: UserCheck },
-  { id: 4, title: "Konfirmasi", icon: ClipboardCheck },
+  { id: 3, title: "Konfirmasi", icon: ClipboardCheck },
 ];
 
 export default function CreateWorkOrderPage() {
@@ -57,15 +56,15 @@ export default function CreateWorkOrderPage() {
   // Data
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [vehicleSearch, setVehicleSearch] = useState("");
 
   // Form
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [serviceType, setServiceType] = useState<"SERVIS" | "CUCI">("SERVIS");
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
-  const [selectedEmployee, setSelectedEmployee] = useState<string>("");
+  const [manualServices, setManualServices] = useState([{ id: Date.now().toString(), name: "", price: "" }]);
   const [notes, setNotes] = useState("");
+  const [vehicleHistory, setVehicleHistory] = useState<{ id: string, name: string, price: number, date: string }[]>([]);
 
   // New customer inline form
   const [showNewCustomer, setShowNewCustomer] = useState(false);
@@ -81,32 +80,47 @@ export default function CreateWorkOrderPage() {
   }, [vehicleSearch]);
 
   useEffect(() => {
-    fetch(`/api/services?category=${serviceType}`)
-      .then((r) => r.json())
-      .then(setServices);
-    setSelectedServiceIds([]);
-  }, [serviceType]);
+    if (selectedVehicle) {
+      fetch(`/api/vehicles/${selectedVehicle.id}/history`)
+        .then(r => r.json())
+        .then(data => {
+          const past: { id: string, name: string, price: number, date: string }[] = [];
+          data.forEach((wo: any) => {
+            if (wo.status === "SELESAI" && wo.completedAt) {
+              wo.services.forEach((s: any) => {
+                past.push({ id: Math.random().toString(), name: s.service.name, price: Number(s.price), date: wo.completedAt });
+              });
+              wo.historyItems.forEach((h: any) => {
+                past.push({ id: Math.random().toString(), name: h.title, price: Number(h.price), date: wo.completedAt });
+              });
+            }
+          });
+          setVehicleHistory(past);
+        })
+        .catch(() => setVehicleHistory([]));
+    } else {
+      setVehicleHistory([]);
+    }
+  }, [selectedVehicle]);
 
   useEffect(() => {
-    fetch("/api/employees")
-      .then((r) => r.ok ? r.json() : [])
-      .then((data) => {
-        if (Array.isArray(data)) setEmployees(data);
-      })
-      .catch(() => setEmployees([]));
+    fetch("/api/services?category=CUCI")
+      .then((r) => r.json())
+      .then(setServices);
   }, []);
+
 
   const selectedServices = services.filter((s) =>
     selectedServiceIds.includes(s.id)
   );
-  const totalCost = selectedServices.reduce(
-    (sum, s) => sum + Number(s.price),
-    0
-  );
+  
+  const totalCost = serviceType === "CUCI"
+    ? selectedServices.reduce((sum, s) => sum + Number(s.price), 0)
+    : manualServices.reduce((sum, ms) => sum + (parseInt(ms.price.replace(/\D/g, "")) || 0), 0) + selectedServices.reduce((sum, s) => sum + Number(s.price), 0);
 
   const toggleService = (id: string) => {
     setSelectedServiceIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? [] : [id]
     );
   };
 
@@ -141,28 +155,39 @@ export default function CreateWorkOrderPage() {
 
   const handleSubmit = async () => {
     setSaving(true);
-    const res = await fetch("/api/work-orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        vehicleId: selectedVehicle?.id,
-        employeeId: selectedEmployee || null,
-        serviceType,
-        serviceIds: selectedServiceIds,
-        notes: notes || null,
-      }),
-    });
-    if (res.ok) {
-      const wo = await res.json();
-      router.push(`/work-orders/${wo.id}`);
+    try {
+      const res = await fetch("/api/work-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicleId: selectedVehicle?.id,
+          serviceType,
+          serviceIds: selectedServiceIds,
+          manualServices: manualServices.map(ms => ({ name: ms.name, price: parseInt(ms.price.replace(/\D/g, "")) || 0 })),
+          notes: notes || null,
+        }),
+      });
+      
+      if (res.ok) {
+        const wo = await res.json();
+        router.push(`/work-orders/${wo.id}`);
+      } else {
+        const err = await res.json();
+        alert(err.error || "Gagal membuat work order. Silakan coba lagi.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Terjadi kesalahan jaringan atau server.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const canNext =
     (step === 1 && selectedVehicle) ||
-    (step === 2 && selectedServiceIds.length > 0) ||
-    step === 3;
+    (step === 2 && serviceType === "CUCI" && selectedServiceIds.length > 0) ||
+    (step === 2 && serviceType === "SERVIS" && manualServices.some(ms => ms.name.trim() !== "")) ||
+    step === 3; // Konfirmasi is always valid
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -228,12 +253,12 @@ export default function CreateWorkOrderPage() {
             <span className="font-medium text-foreground">
               Step {step}: {steps[step - 1].title}
             </span>
-            <span className="text-muted-foreground">{step}/4</span>
+            <span className="text-muted-foreground">{step}/3</span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-muted">
             <div
               className="h-full rounded-full bg-primary transition-all duration-300"
-              style={{ width: `${(step / 4) * 100}%` }}
+              style={{ width: `${(step / 3) * 100}%` }}
             />
           </div>
         </div>
@@ -264,10 +289,10 @@ export default function CreateWorkOrderPage() {
                 <div className="grid gap-3 sm:grid-cols-1">
                   <Input label="No. HP" value={newCustomer.phone} onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })} required />
                 </div>
-                <Input label="Plat Nomor" value={newCustomer.plateNumber} onChange={(e) => setNewCustomer({ ...newCustomer, plateNumber: e.target.value })} required />
+                <Input label="Plat Nomor" maxLength={9} value={newCustomer.plateNumber} onChange={(e) => setNewCustomer({ ...newCustomer, plateNumber: e.target.value.toUpperCase().replace(/\s+/g, "") })} required />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Input label="Merek" value={newCustomer.brand} onChange={(e) => setNewCustomer({ ...newCustomer, brand: e.target.value })} />
-                  <Input label="Model" value={newCustomer.model} onChange={(e) => setNewCustomer({ ...newCustomer, model: e.target.value })} />
+                  <Input label="Merek" value={newCustomer.brand} onChange={(e) => setNewCustomer({ ...newCustomer, brand: e.target.value.toUpperCase() })} />
+                  <Input label="Model" value={newCustomer.model} onChange={(e) => setNewCustomer({ ...newCustomer, model: e.target.value.toUpperCase() })} />
                 </div>
                 <Button size="sm" loading={creatingCustomer} onClick={handleCreateCustomer}>
                   Simpan & Pilih
@@ -353,42 +378,132 @@ export default function CreateWorkOrderPage() {
               </button>
             </div>
 
-            <div className="space-y-2">
-              {services.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => toggleService(s.id)}
-                  className={cn(
-                    "w-full rounded-xl border p-4 text-left transition-all",
-                    selectedServiceIds.includes(s.id)
-                      ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                      : "border-border hover:border-primary/30 hover:bg-accent/50"
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground">
-                      {s.name}
-                    </span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-semibold text-foreground">
-                        {formatCurrency(s.price)}
+            {serviceType === "CUCI" ? (
+              <div className="space-y-2">
+                {services.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => toggleService(s.id)}
+                    className={cn(
+                      "w-full rounded-xl border p-4 text-left transition-all",
+                      selectedServiceIds.includes(s.id)
+                        ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                        : "border-border hover:border-primary/30 hover:bg-accent/50"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-foreground">
+                        {s.name}
                       </span>
-                      {selectedServiceIds.includes(s.id) && (
-                        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                          <Check className="h-3 w-3 text-primary-foreground" />
-                        </div>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-semibold text-foreground">
+                          {formatCurrency(s.price)}
+                        </span>
+                        {selectedServiceIds.includes(s.id) && (
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                            <Check className="h-3 w-3 text-primary-foreground" />
+                          </div>
+                        )}
+                      </div>
                     </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {manualServices.map((ms, index) => (
+                  <div key={ms.id} className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <Input 
+                        placeholder="Contoh: Ganti Kampas Rem" 
+                        value={ms.name}
+                        onChange={(e) => {
+                          const newMs = [...manualServices];
+                          newMs[index].name = e.target.value;
+                          setManualServices(newMs);
+                        }}
+                      />
+                    </div>
+                    <div className="w-1/3">
+                      <Input 
+                        placeholder="Rp 0" 
+                        value={ms.price}
+                        onChange={(e) => {
+                          const newMs = [...manualServices];
+                          // Simple number format logic for manual UI
+                          let raw = e.target.value.replace(/\D/g, "");
+                          if (raw) {
+                            newMs[index].price = new Intl.NumberFormat("id-ID").format(parseInt(raw));
+                          } else {
+                            newMs[index].price = "";
+                          }
+                          setManualServices(newMs);
+                        }}
+                      />
+                    </div>
+                    {manualServices.length > 1 && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-10 w-10 p-0 flex justify-center items-center shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => {
+                          setManualServices(manualServices.filter(item => item.id !== ms.id));
+                        }}
+                      >
+                        <Wrench className="h-4 w-4" style={{ transform: "rotate(45deg)" }} /> {/* acts like an X if we don't import Trash/X */}
+                      </Button>
+                    )}
                   </div>
-                </button>
-              ))}
-            </div>
+                ))}
+                <Button 
+                  variant="outline" 
+                  onClick={() => setManualServices([...manualServices, { id: Date.now().toString(), name: "", price: "" }])}
+                  className="w-full mt-2"
+                >
+                  <Plus className="mr-2 h-4 w-4" /> Tambah Baris Jasa
+                </Button>
 
-            {selectedServiceIds.length > 0 && (
-              <div className="rounded-xl bg-muted/50 p-4">
+                <div className="pt-6 border-t border-border mt-6">
+                  <h3 className="text-sm font-semibold text-foreground mb-3">Layanan Cuci Tambahan (Opsional)</h3>
+                  <div className="space-y-2">
+                    {services.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => toggleService(s.id)}
+                        className={cn(
+                          "w-full rounded-xl border p-4 text-left transition-all",
+                          selectedServiceIds.includes(s.id)
+                            ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                            : "border-border hover:border-primary/30 hover:bg-accent/50"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-foreground">
+                            {s.name}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-semibold text-foreground">
+                              {formatCurrency(s.price)}
+                            </span>
+                            {selectedServiceIds.includes(s.id) && (
+                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                                <Check className="h-3 w-3 text-primary-foreground" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(serviceType === "CUCI" ? selectedServiceIds.length > 0 : (manualServices.some(m => m.name.trim() !== "") || selectedServiceIds.length > 0)) && (
+              <div className="rounded-xl bg-muted/50 p-4 mt-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">
-                    {selectedServiceIds.length} layanan dipilih
+                    {serviceType === "CUCI" ? `${selectedServiceIds.length} layanan dipilih` : "Total Biaya Jasa & Cuci"}
                   </span>
                   <span className="text-lg font-bold text-foreground">
                     {formatCurrency(totalCost)}
@@ -396,86 +511,45 @@ export default function CreateWorkOrderPage() {
                 </div>
               </div>
             )}
+
+            {serviceType === "SERVIS" && vehicleHistory.length > 0 && (
+              <div className="mt-6 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <h3 className="mb-3 text-sm font-semibold text-primary">Histori Servis Sebelumnya</h3>
+                <div className="space-y-2">
+                  {vehicleHistory.map((h) => (
+                     <div key={h.id} className="flex items-center justify-between rounded-lg bg-background p-3 text-sm border border-border">
+                       <div>
+                         <p className="font-medium text-foreground">{h.name}</p>
+                         <p className="text-xs text-muted-foreground">{new Date(h.date).toLocaleDateString("id-ID")}</p>
+                       </div>
+                       <div className="text-right flex items-center gap-3">
+                         <p className="font-semibold">{formatCurrency(h.price)}</p>
+                         <Button 
+                            variant="secondary" 
+                            size="sm" 
+                            className="h-7 text-xs" 
+                            onClick={() => {
+                               const newMs = [...manualServices];
+                               if (newMs.length === 1 && !newMs[0].name) {
+                                 newMs[0] = { id: Date.now().toString(), name: h.name, price: new Intl.NumberFormat("id-ID").format(h.price) };
+                               } else {
+                                 newMs.push({ id: Date.now().toString(), name: h.name, price: new Intl.NumberFormat("id-ID").format(h.price) });
+                               }
+                               setManualServices(newMs);
+                            }}
+                         >
+                           Gunakan Lagi
+                         </Button>
+                       </div>
+                     </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
-
-        {/* Step 3: Assign Employee */}
+        {/* Step 3: Confirmation */}
         {step === 3 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">
-              Pilih Petugas (Opsional)
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Anda bisa menugaskan petugas sekarang atau nanti
-            </p>
-
-            <div className="space-y-2">
-              <button
-                onClick={() => setSelectedEmployee("")}
-                className={cn(
-                  "w-full rounded-xl border p-4 text-left transition-all",
-                  !selectedEmployee
-                    ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                    : "border-border hover:border-primary/30"
-                )}
-              >
-                <span className="text-sm font-medium text-muted-foreground">
-                  — Belum ditentukan —
-                </span>
-              </button>
-              {(() => {
-                const filteredEmployees = employees.filter((emp) => {
-                  if (emp._count?.workOrders && emp._count.workOrders > 0) return false;
-                  
-                  if (serviceType === "SERVIS") {
-                    return ["Mekanik", "Hybrid"].includes(emp.position);
-                  } else if (serviceType === "CUCI") {
-                    return ["Pencuci Mobil", "Hybrid"].includes(emp.position);
-                  }
-                  return true;
-                });
-                return filteredEmployees.map((emp) => (
-                  <button
-                    key={emp.id}
-                  onClick={() => setSelectedEmployee(emp.id)}
-                  className={cn(
-                    "w-full rounded-xl border p-4 text-left transition-all",
-                    selectedEmployee === emp.id
-                      ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                      : "border-border hover:border-primary/30 hover:bg-accent/50"
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm font-medium text-foreground">
-                        {emp.name}
-                      </span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {emp.position}
-                      </span>
-                    </div>
-                    {selectedEmployee === emp.id && (
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                        <Check className="h-3 w-3 text-primary-foreground" />
-                      </div>
-                    )}
-                  </div>
-                </button>
-                ));
-              })()}
-            </div>
-
-            <Textarea
-              label="Catatan (opsional)"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Tambahkan catatan untuk work order ini..."
-            />
-          </div>
-        )}
-
-        {/* Step 4: Confirmation */}
-        {step === 4 && (
           <div className="space-y-5">
             <h2 className="text-lg font-semibold text-foreground">
               Konfirmasi Work Order
@@ -525,17 +599,44 @@ export default function CreateWorkOrderPage() {
                   Layanan Dipilih
                 </p>
                 <div className="mt-2 space-y-1">
-                  {selectedServices.map((s) => (
-                    <div
-                      key={s.id}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <span className="text-foreground">{s.name}</span>
-                      <span className="font-medium text-foreground">
-                        {formatCurrency(s.price)}
-                      </span>
-                    </div>
-                  ))}
+                  {serviceType === "CUCI" ? (
+                    selectedServices.map((s) => (
+                      <div
+                        key={s.id}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span className="text-foreground">{s.name}</span>
+                        <span className="font-medium text-foreground">
+                          {formatCurrency(s.price)}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      {manualServices.filter(m => m.name.trim() !== "").map((ms) => (
+                        <div
+                          key={ms.id}
+                          className="flex items-center justify-between text-sm"
+                        >
+                          <span className="text-foreground">{ms.name}</span>
+                          <span className="font-medium text-foreground">
+                            {formatCurrency(parseInt(ms.price.replace(/\D/g, "")) || 0)}
+                          </span>
+                        </div>
+                      ))}
+                      {selectedServices.map((s) => (
+                        <div
+                          key={s.id}
+                          className="flex items-center justify-between text-sm"
+                        >
+                          <span className="text-foreground">{s.name} <span className="text-xs text-muted-foreground">(Cuci Tambahan)</span></span>
+                          <span className="font-medium text-foreground">
+                            {formatCurrency(s.price)}
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  )}
                   <hr className="border-border" />
                   <div className="flex items-center justify-between text-sm font-bold">
                     <span className="text-foreground">Total</span>
@@ -545,17 +646,6 @@ export default function CreateWorkOrderPage() {
                   </div>
                 </div>
               </div>
-
-              {selectedEmployee && (
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Petugas
-                  </p>
-                  <p className="mt-1 text-sm font-medium text-foreground">
-                    {employees.find((e) => e.id === selectedEmployee)?.name}
-                  </p>
-                </div>
-              )}
 
               {notes && (
                 <div>
@@ -580,7 +670,7 @@ export default function CreateWorkOrderPage() {
           <span className="hidden sm:inline">{step === 1 ? "Batal" : "Sebelumnya"}</span>
         </Button>
 
-        {step < 4 ? (
+        {step < 3 ? (
           <Button
             onClick={() => setStep(step + 1)}
             disabled={!canNext}

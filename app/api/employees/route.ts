@@ -6,25 +6,62 @@ import { auth } from "@/lib/auth";
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if ((session.user as any)?.role !== "SUPERADMIN") return NextResponse.json({ error: "Akses ditolak" }, { status: 403 });
+
+  const url = new URL(req.url);
+  const availableFor = url.searchParams.get("availableFor");
 
   const employees = await prisma.employee.findMany({
     where: { isActive: true },
-    include: {
-      _count: {
-        select: {
-          workOrders: {
-            where: {
-              status: { in: ["ANTRI", "PROSES"] }
-            }
-          }
-        }
-      }
-    },
     orderBy: { name: "asc" },
+    include: {
+      workOrderServices: {
+        where: {
+          workOrder: {
+            status: { in: ["ANTRI", "PROSES"] },
+          },
+        },
+        select: { workOrderId: true },
+      },
+      workOrderParts: {
+        where: {
+          workOrder: {
+            status: { in: ["ANTRI", "PROSES"] },
+          },
+        },
+        select: { workOrderId: true },
+      },
+      historyItems: {
+        where: {
+          workOrder: {
+            status: { in: ["ANTRI", "PROSES"] },
+          },
+        },
+        select: { workOrderId: true },
+      },
+    },
   });
 
-  return NextResponse.json(employees);
+  let result = employees;
+
+  if (availableFor) {
+    result = employees.filter((emp) => {
+      const isBusyWithOtherService = emp.workOrderServices.some(
+        (ws) => ws.workOrderId !== availableFor
+      );
+      const isBusyWithOtherPart = emp.workOrderParts.some(
+        (wp) => wp.workOrderId !== availableFor
+      );
+      const isBusyWithOtherHistory = emp.historyItems.some(
+        (hi) => hi.workOrderId !== availableFor
+      );
+      return !isBusyWithOtherService && !isBusyWithOtherPart && !isBusyWithOtherHistory;
+    });
+  }
+
+  // Remove the relations from the final payload to keep it clean
+  const cleanData = result.map(({ workOrderServices, workOrderParts, historyItems, ...rest }) => rest);
+
+  return NextResponse.json(cleanData);
 }
 
 // POST /api/employees — Create employee
@@ -49,10 +86,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const validPositions = ["Mekanik", "Pencuci Mobil", "Hybrid"];
+  const validPositions = ["Mekanik", "Pencuci Mobil"];
   if (!validPositions.includes(position)) {
     return NextResponse.json(
-      { error: "Posisi tidak valid. Harus Mekanik, Pencuci Mobil, atau Hybrid" },
+      { error: "Posisi tidak valid. Harus Mekanik atau Pencuci Mobil" },
       { status: 400 }
     );
   }

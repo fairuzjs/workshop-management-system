@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import { FinancialClient } from "./_components/financial-client";
+import { FinancialTabs } from "@/components/dashboard/financial-tabs";
 
 export default async function FinancialPage(props: { searchParams: Promise<{ period?: string, date?: string }> }) {
   const session = await auth();
@@ -106,8 +107,16 @@ export default async function FinancialPage(props: { searchParams: Promise<{ per
   const payroll = Number(totalSalary._sum.salary || 0) + Number(totalEarning._sum.amount || 0);
 
   return (
-    <FinancialClient 
-      role={userRole}
+    <div className="space-y-6">
+      <div>
+        <h1 className="mb-2 text-2xl font-bold uppercase tracking-wider">Laporan Keuangan & Operasional</h1>
+        <p className="text-muted-foreground">Ringkasan performa bengkel</p>
+      </div>
+
+      <FinancialTabs activeTab="dashboard" userRole={userRole} />
+
+      <FinancialClient 
+        role={userRole}
       period={period}
       dateStr={dateStr}
       stats={{
@@ -134,5 +143,6 @@ export default async function FinancialPage(props: { searchParams: Promise<{ per
         }))
       }}
     />
+    </div>
   );
 }

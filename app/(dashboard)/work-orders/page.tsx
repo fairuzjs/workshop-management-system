@@ -3,9 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/shared/page-header";
 import {
-  WorkOrderStatusBadge,
+  QueueStatusBadge,
   ServiceCategoryBadge,
 } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -22,8 +21,6 @@ import {
   Activity,
   Check,
   Loader2,
-  Wrench,
-  Package,
   Car,
   Bell,
 } from "lucide-react";
@@ -43,25 +40,25 @@ interface WorkOrderListItem {
     plateNumber: string;
     brand: string | null;
     model: string | null;
-    customer: { phone: string };
+    customer: { phone: string; name?: string | null };
   };
   employee: { name: string; position: string } | null;
   services?: Array<{
     id: string;
     price: string;
-    service: {
-      name: string;
-      price: string;
-    };
+    service: { name: string };
+    employees?: Array<{ name: string }>;
+  }>;
+  historyItems?: Array<{
+    id: string;
+    title: string;
+    employees?: Array<{ name: string }>;
   }>;
   parts?: Array<{
     id: string;
-    price: string;
-    qty: number;
-    inventory: {
-      name: string;
-    };
+    employees?: Array<{ name: string }>;
   }>;
+  transaction?: { id: string; status: string } | null;
 }
 
 interface PaginationInfo {
@@ -78,75 +75,113 @@ const statusTabs = [
   { label: "Selesai", value: "SELESAI" },
 ];
 
-const formatTimeOnly = (dateStr: string) => {
-  try {
-    const date = new Date(dateStr);
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${hours}:${minutes}`;
-  } catch (e) {
-    return "--:--";
-  }
-};
-
 export default function WorkOrdersPage() {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<"BOARD" | "TABLE">("BOARD");
-  const [workOrders, setWorkOrders] = useState<WorkOrderListItem[]>([]);
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0,
+
+  // Board mode data
+  const [activeOrders, setActiveOrders] = useState<WorkOrderListItem[]>([]);
+  const [completedOrders, setCompletedOrders] = useState<WorkOrderListItem[]>([]);
+  const [loadingActive, setLoadingActive] = useState(true);
+  const [loadingCompleted, setLoadingCompleted] = useState(true);
+
+  // Table mode data
+  const [tableOrders, setTableOrders] = useState<WorkOrderListItem[]>([]);
+  const [tablePagination, setTablePagination] = useState<PaginationInfo>({
+    page: 1, limit: 20, total: 0, totalPages: 0,
   });
-  const [loading, setLoading] = useState(true);
+  const [loadingTable, setLoadingTable] = useState(true);
+
+  // Shared
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const fetchWorkOrders = useCallback(async () => {
-    setLoading(true);
+  // Fetch active queue (ANTRI + PROSES)
+  const fetchActiveOrders = useCallback(async () => {
+    setLoadingActive(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
-      
-      if (viewMode === "TABLE") {
-        if (statusFilter) params.set("status", statusFilter);
-        params.set("page", String(pagination.page));
-        params.set("limit", "20");
-      } else {
-        // In Board mode, fetch 100 latest orders so we can display active queues properly
-        params.set("page", "1");
-        params.set("limit", "100");
-      }
-      
       if (typeFilter) params.set("serviceType", typeFilter);
-
-      const res = await fetch(`/api/work-orders?${params.toString()}`);
-      if (!res.ok) {
-        if (res.status === 401) {
-          router.push("/login");
-          return;
-        }
-        throw new Error(`Failed to fetch work orders: ${res.statusText}`);
-      }
-      const data = await res.json();
-      setWorkOrders(data.data || []);
-      
-      if (viewMode === "TABLE") {
-        setPagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });
+      params.set("page", "1");
+      params.set("limit", "100");
+      // Only fetch ANTRI and PROSES
+      const res1 = await fetch(`/api/work-orders?status=ANTRI&${params}`);
+      const res2 = await fetch(`/api/work-orders?status=PROSES&${params}`);
+      if (res1.ok && res2.ok) {
+        const d1 = await res1.json();
+        const d2 = await res2.json();
+        // Combine and sort by createdAt ASC (FIFO)
+        const combined = [...(d1.data || []), ...(d2.data || [])];
+        combined.sort((a: WorkOrderListItem, b: WorkOrderListItem) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+        setActiveOrders(combined);
       }
     } catch (error) {
-      console.error("Error fetching work orders:", error);
+      console.error("Error fetching active orders:", error);
     } finally {
-      setLoading(false);
+      setLoadingActive(false);
     }
-  }, [search, statusFilter, typeFilter, pagination.page, viewMode, router]);
+  }, [search, typeFilter]);
+
+  // Fetch completed today
+  const fetchCompletedOrders = useCallback(async () => {
+    setLoadingCompleted(true);
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (typeFilter) params.set("serviceType", typeFilter);
+      params.set("completedToday", "true");
+      params.set("page", "1");
+      params.set("limit", "100");
+
+      const res = await fetch(`/api/work-orders?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCompletedOrders(data.data || []);
+      }
+    } catch (error) {
+      console.error("Error fetching completed orders:", error);
+    } finally {
+      setLoadingCompleted(false);
+    }
+  }, [search, typeFilter]);
+
+  // Fetch table mode
+  const fetchTableOrders = useCallback(async () => {
+    setLoadingTable(true);
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (statusFilter) params.set("status", statusFilter);
+      if (typeFilter) params.set("serviceType", typeFilter);
+      params.set("page", String(tablePagination.page));
+      params.set("limit", "20");
+
+      const res = await fetch(`/api/work-orders?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTableOrders(data.data || []);
+        setTablePagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });
+      }
+    } catch (error) {
+      console.error("Error fetching table orders:", error);
+    } finally {
+      setLoadingTable(false);
+    }
+  }, [search, statusFilter, typeFilter, tablePagination.page]);
 
   useEffect(() => {
-    fetchWorkOrders();
-  }, [fetchWorkOrders]);
+    if (viewMode === "BOARD") {
+      fetchActiveOrders();
+      fetchCompletedOrders();
+    } else {
+      fetchTableOrders();
+    }
+  }, [viewMode, fetchActiveOrders, fetchCompletedOrders, fetchTableOrders]);
 
   const handleUpdateStatus = async (id: string, newStatus: string) => {
     setUpdatingId(id);
@@ -160,7 +195,9 @@ export default function WorkOrdersPage() {
         const err = await res.json();
         alert(err.error || "Gagal memperbarui status");
       } else {
-        await fetchWorkOrders();
+        // Refresh both tables
+        fetchActiveOrders();
+        fetchCompletedOrders();
       }
     } catch (err) {
       console.error("Error updating status:", err);
@@ -169,22 +206,24 @@ export default function WorkOrdersPage() {
     }
   };
 
-  // Filter lists for board columns
-  const waitingOrders = workOrders.filter((wo) => wo.status === "ANTRI");
-  const inProgressOrders = workOrders.filter((wo) => wo.status === "PROSES");
+  const formatTimeOnly = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+    } catch {
+      return "--:--";
+    }
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Pantau Work Order</h1>
-          <p className="text-sm text-muted-foreground font-medium">Board antrean dan progres servis</p>
+          <h1 className="text-2xl font-bold text-foreground">Papan Antrean & Proses</h1>
+          <p className="text-sm text-muted-foreground font-medium">Pantau antrean kendaraan secara realtime</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground hover:text-foreground transition-all hover:shadow-sm">
-            <Bell className="h-5 w-5" />
-          </button>
           <Button
             onClick={() => router.push("/work-orders/create")}
             className="h-11 rounded-2xl bg-amber-500 hover:bg-amber-600 text-amber-950 font-bold px-5 transition-all shadow-sm flex items-center gap-1.5"
@@ -195,14 +234,11 @@ export default function WorkOrdersPage() {
         </div>
       </div>
 
-      {/* View Mode & Filter Toggles */}
+      {/* View Mode & Filters */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              setViewMode("BOARD");
-              setPagination((p) => ({ ...p, page: 1 }));
-            }}
+            onClick={() => setViewMode("BOARD")}
             className={cn(
               "rounded-xl px-4 py-2 text-sm font-semibold transition-all",
               viewMode === "BOARD"
@@ -210,13 +246,10 @@ export default function WorkOrdersPage() {
                 : "text-muted-foreground hover:bg-accent hover:text-foreground"
             )}
           >
-            Board Antrean
+            Papan Antrean
           </button>
           <button
-            onClick={() => {
-              setViewMode("TABLE");
-              setPagination((p) => ({ ...p, page: 1 }));
-            }}
+            onClick={() => setViewMode("TABLE")}
             className={cn(
               "rounded-xl px-4 py-2 text-sm font-semibold transition-all",
               viewMode === "TABLE"
@@ -228,7 +261,6 @@ export default function WorkOrdersPage() {
           </button>
         </div>
 
-        {/* Global Search & Type Filters */}
         <div className="flex flex-col gap-3 w-full sm:w-auto sm:flex-row sm:items-center">
           <div className="relative flex-1 sm:w-64">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -252,203 +284,202 @@ export default function WorkOrdersPage() {
         </div>
       </div>
 
-      {loading && workOrders.length === 0 ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      ) : viewMode === "BOARD" ? (
-        /* Board Queue Layout */
+      {viewMode === "BOARD" ? (
+        /* ===== BOARD MODE: Two Tables ===== */
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Sedang Menunggu Column */}
-          <div className="flex flex-col space-y-4 rounded-2xl border border-border bg-card/40 p-4">
-            <div className="flex items-center justify-between border-b border-border pb-3 px-1">
-              <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-amber-500" />
-                <h3 className="font-bold text-foreground text-sm sm:text-base">Sedang Menunggu</h3>
+          {/* LEFT TABLE: Antrean Aktif */}
+          <div className="rounded-2xl border border-border bg-card/40 overflow-hidden">
+            {/* Header with colored top border */}
+            <div className="border-b-2 border-blue-500 bg-blue-500/5 px-5 py-3.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-blue-500" />
+                  <h3 className="font-bold text-foreground text-sm sm:text-base">ANTREAN AKTIF</h3>
+                </div>
+                <span className="rounded-full bg-blue-500/10 text-blue-500 px-3 py-1 text-xs font-bold font-mono">
+                  {activeOrders.length} Unit
+                </span>
               </div>
-              <span className="rounded-full bg-amber-500/10 text-amber-500 px-3 py-1 text-xs font-bold font-mono">
-                {waitingOrders.length} Unit
-              </span>
             </div>
 
-            <div className="flex-1 space-y-4 min-h-[400px] max-h-[800px] overflow-y-auto pr-1">
-              {waitingOrders.length === 0 ? (
-                <div className="flex h-64 items-center justify-center rounded-2xl border-2 border-dashed border-border text-center">
+            {/* Table content */}
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              {loadingActive ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : activeOrders.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-center">
                   <p className="text-xs text-muted-foreground">Tidak ada kendaraan di antrean</p>
                 </div>
               ) : (
-                waitingOrders.map((wo) => (
-                  <div
-                    key={wo.id}
-                    className="group relative rounded-2xl border border-border/80 bg-card p-5 transition-all hover:border-amber-500/30 hover:shadow-md cursor-pointer"
-                    onClick={() => router.push(`/work-orders/${wo.id}`)}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
-                          <Car className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-foreground text-base sm:text-lg tracking-wide uppercase">
-                            {wo.vehicle?.plateNumber || "-"}
-                          </h4>
-                          <p className="text-xs text-muted-foreground font-medium">
-                            {[wo.vehicle?.brand, wo.vehicle?.model].filter(Boolean).join(" ")}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="rounded-lg bg-muted px-2.5 py-1 font-mono text-[10px] font-bold text-muted-foreground uppercase">
-                        {wo.trackingToken}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 rounded-xl bg-muted/40 p-4 space-y-3">
-                      <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                          <Wrench className="h-3.5 w-3.5" /> Jasa
-                        </span>
-                        <p className="mt-1 text-xs font-semibold text-foreground">
-                          {wo.services && wo.services.length > 0
-                            ? wo.services.map((s) => s.service.name).join(", ")
-                            : "-"}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                          <Package className="h-3.5 w-3.5" /> Parts
-                        </span>
-                        <p className="mt-1 text-xs font-semibold text-foreground">
-                          {wo.parts && wo.parts.length > 0
-                            ? wo.parts.map((p) => p.inventory.name).join(", ")
-                            : "-"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between border-t border-border/40 pt-3">
-                      <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-muted-foreground" /> Masuk: {formatTimeOnly(wo.createdAt)}
-                      </span>
-                      <Button
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUpdateStatus(wo.id, "PROSES");
-                        }}
-                        disabled={updatingId !== null}
-                        className="bg-amber-500 hover:bg-amber-600 text-amber-950 font-bold text-xs rounded-xl px-4 py-2 flex items-center gap-1 transition-all"
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm">
+                    <tr className="border-b border-border">
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Token</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Merk Mobil</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Plat Nomor</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Layanan</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Karyawan</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</th>
+                      <th className="px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {activeOrders.map((wo) => (
+                      <tr
+                        key={wo.id}
+                        className="transition-colors hover:bg-muted/30 cursor-pointer"
+                        onClick={() => router.push(`/work-orders/${wo.id}`)}
                       >
-                        {updatingId === wo.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <>
-                            Kerjakan <ArrowRight className="h-3.5 w-3.5" />
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                ))
+                        <td className="px-4 py-3 font-mono text-xs font-bold text-foreground">{wo.trackingToken}</td>
+                        <td className="px-4 py-3 text-xs text-foreground">
+                          {[wo.vehicle?.brand, wo.vehicle?.model].filter(Boolean).join(" ") || "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs font-semibold text-foreground">
+                            {wo.vehicle?.plateNumber || "-"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">
+                          {[
+                            ...(wo.services?.map(s => s.service.name) || []),
+                            ...(wo.historyItems?.map(h => h.title) || [])
+                          ].join(", ") || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">
+                          {[
+                            ...(wo.services?.flatMap(s => s.employees || []) || []),
+                            ...(wo.historyItems?.flatMap(h => h.employees || []) || []),
+                            ...(wo.parts?.flatMap(p => p.employees || []) || [])
+                          ].map(e => e.name).filter((v, i, a) => a.indexOf(v) === i).join(", ") || "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <QueueStatusBadge status={wo.status} />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {wo.status === "ANTRI" && (
+                            <Button
+                              size="sm"
+                              onClick={(e) => { e.stopPropagation(); handleUpdateStatus(wo.id, "PROSES"); }}
+                              disabled={updatingId !== null}
+                              className="bg-amber-500 hover:bg-amber-600 text-amber-950 font-bold text-[10px] rounded-lg px-3 py-1.5 h-auto"
+                            >
+                              {updatingId === wo.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <>Kerjakan <ArrowRight className="h-3 w-3 ml-0.5" /></>}
+                            </Button>
+                          )}
+                          {wo.status === "PROSES" && (() => {
+                            const hasEmployees = [
+                              ...(wo.services?.flatMap(s => s.employees || []) || []),
+                              ...(wo.historyItems?.flatMap(h => h.employees || []) || []),
+                              ...(wo.parts?.flatMap(p => p.employees || []) || [])
+                            ].length > 0;
+
+                            return (
+                              <Button
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); handleUpdateStatus(wo.id, "SELESAI"); }}
+                                disabled={updatingId !== null || !hasEmployees}
+                                title={!hasEmployees ? "Pilih mekanik terlebih dahulu di detail WO" : ""}
+                                className={`font-bold text-[10px] rounded-lg px-3 py-1.5 h-auto ${
+                                  !hasEmployees 
+                                    ? "bg-muted text-muted-foreground cursor-not-allowed" 
+                                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                }`}
+                              >
+                                {updatingId === wo.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <>Selesai <Check className="h-3 w-3 ml-0.5" /></>}
+                              </Button>
+                            );
+                          })()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
           </div>
 
-          {/* Sedang Diproses Column */}
-          <div className="flex flex-col space-y-4 rounded-2xl border border-border bg-card/40 p-4">
-            <div className="flex items-center justify-between border-b border-border pb-3 px-1">
-              <div className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-blue-500" />
-                <h3 className="font-bold text-foreground text-sm sm:text-base">Sedang Diproses</h3>
+          {/* RIGHT TABLE: Selesai Dikerjakan */}
+          <div className="rounded-2xl border border-border bg-card/40 overflow-hidden">
+            {/* Header with colored top border */}
+            <div className="border-b-2 border-amber-500 bg-amber-500/5 px-5 py-3.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-amber-500" />
+                  <h3 className="font-bold text-foreground text-sm sm:text-base">SELESAI DIKERJAKAN</h3>
+                  <span className="text-[10px] text-muted-foreground">(Hari Ini)</span>
+                </div>
+                <span className="rounded-full bg-amber-500/10 text-amber-500 px-3 py-1 text-xs font-bold font-mono">
+                  {completedOrders.length} Unit
+                </span>
               </div>
-              <span className="rounded-full bg-blue-500/10 text-blue-500 px-3 py-1 text-xs font-bold font-mono">
-                {inProgressOrders.length} Unit
-              </span>
             </div>
 
-            <div className="flex-1 space-y-4 min-h-[400px] max-h-[800px] overflow-y-auto pr-1">
-              {inProgressOrders.length === 0 ? (
-                <div className="flex h-64 items-center justify-center rounded-2xl border-2 border-dashed border-border text-center">
-                  <p className="text-xs text-muted-foreground">Tidak ada kendaraan yang sedang diproses</p>
+            {/* Table content */}
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              {loadingCompleted ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : completedOrders.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-center">
+                  <p className="text-xs text-muted-foreground">Belum ada kendaraan selesai hari ini</p>
                 </div>
               ) : (
-                inProgressOrders.map((wo) => (
-                  <div
-                    key={wo.id}
-                    className="group relative rounded-2xl border border-border/80 bg-card p-5 transition-all hover:border-blue-500/30 hover:shadow-md cursor-pointer"
-                    onClick={() => router.push(`/work-orders/${wo.id}`)}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
-                          <Car className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-foreground text-base sm:text-lg tracking-wide uppercase">
-                            {wo.vehicle?.plateNumber || "-"}
-                          </h4>
-                          <p className="text-xs text-muted-foreground font-medium">
-                            {[wo.vehicle?.brand, wo.vehicle?.model].filter(Boolean).join(" ")}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="rounded-lg bg-muted px-2.5 py-1 font-mono text-[10px] font-bold text-muted-foreground uppercase">
-                        {wo.trackingToken}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 rounded-xl bg-muted/40 p-4 space-y-3">
-                      <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                          <Wrench className="h-3.5 w-3.5" /> Jasa
-                        </span>
-                        <p className="mt-1 text-xs font-semibold text-foreground">
-                          {wo.services && wo.services.length > 0
-                            ? wo.services.map((s) => s.service.name).join(", ")
-                            : "-"}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                          <Package className="h-3.5 w-3.5" /> Parts
-                        </span>
-                        <p className="mt-1 text-xs font-semibold text-foreground">
-                          {wo.parts && wo.parts.length > 0
-                            ? wo.parts.map((p) => p.inventory.name).join(", ")
-                            : "-"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between border-t border-border/40 pt-3">
-                      <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-muted-foreground" /> Masuk: {formatTimeOnly(wo.createdAt)}
-                      </span>
-                      <Button
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUpdateStatus(wo.id, "SELESAI");
-                        }}
-                        disabled={updatingId !== null}
-                        className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl px-4 py-2 flex items-center gap-1 transition-all"
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm">
+                    <tr className="border-b border-border">
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Token</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Merk Mobil</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Plat Nomor</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Layanan</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Karyawan</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {completedOrders.map((wo) => (
+                      <tr
+                        key={wo.id}
+                        className="transition-colors hover:bg-muted/30 cursor-pointer"
+                        onClick={() => router.push(`/work-orders/${wo.id}`)}
                       >
-                        {updatingId === wo.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <>
-                            Selesai <Check className="h-3.5 w-3.5" />
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                ))
+                        <td className="px-4 py-3 font-mono text-xs font-bold text-foreground">{wo.trackingToken}</td>
+                        <td className="px-4 py-3 text-xs text-foreground">
+                          {[wo.vehicle?.brand, wo.vehicle?.model].filter(Boolean).join(" ") || "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs font-semibold text-foreground">
+                            {wo.vehicle?.plateNumber || "-"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">
+                          {[
+                            ...(wo.services?.map(s => s.service.name) || []),
+                            ...(wo.historyItems?.map(h => h.title) || [])
+                          ].join(", ") || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">
+                          {[
+                            ...(wo.services?.flatMap(s => s.employees || []) || []),
+                            ...(wo.historyItems?.flatMap(h => h.employees || []) || []),
+                            ...(wo.parts?.flatMap(p => p.employees || []) || [])
+                          ].map(e => e.name).filter((v, i, a) => a.indexOf(v) === i).join(", ") || "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <QueueStatusBadge status={wo.status} hasTransaction={!!wo.transaction} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
           </div>
         </div>
       ) : (
-        /* Classic Audit/History Table Layout */
+        /* ===== TABLE MODE: Full History ===== */
         <>
           {/* Status Tabs */}
           <div className="flex gap-1 overflow-x-auto rounded-2xl border border-border bg-card p-1.5">
@@ -457,7 +488,7 @@ export default function WorkOrdersPage() {
                 key={tab.value}
                 onClick={() => {
                   setStatusFilter(tab.value);
-                  setPagination((p) => ({ ...p, page: 1 }));
+                  setTablePagination((p) => ({ ...p, page: 1 }));
                 }}
                 className={cn(
                   "flex-shrink-0 rounded-xl px-4 py-2 text-sm font-medium transition-all",
@@ -471,7 +502,11 @@ export default function WorkOrdersPage() {
             ))}
           </div>
 
-          {workOrders.length === 0 ? (
+          {loadingTable ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : tableOrders.length === 0 ? (
             <EmptyState
               icon={ClipboardList}
               title="Belum ada work order"
@@ -502,41 +537,24 @@ export default function WorkOrdersPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {workOrders.map((wo) => (
+                      {tableOrders.map((wo) => (
                         <tr key={wo.id} className="transition-colors hover:bg-muted/30">
+                          <td className="whitespace-nowrap px-6 py-4 font-mono text-sm font-semibold text-foreground">{wo.trackingToken}</td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground">{wo.vehicle?.customer?.phone ?? "-"}</td>
                           <td className="whitespace-nowrap px-6 py-4">
-                            <span className="font-mono text-sm font-semibold text-foreground">
-                              {wo.trackingToken}
-                            </span>
+                            <span className="rounded-lg bg-muted px-2 py-0.5 font-mono text-xs font-medium text-foreground">{wo.vehicle?.plateNumber ?? "-"}</span>
                           </td>
-                          <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground">
-                            {wo.vehicle?.customer?.phone ?? "-"}
-                          </td>
-                          <td className="whitespace-nowrap px-6 py-4">
-                            <div>
-                              <span className="rounded-lg bg-muted px-2 py-0.5 font-mono text-xs font-medium text-foreground">
-                                {wo.vehicle?.plateNumber ?? "-"}
-                              </span>
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              {[wo.vehicle?.brand, wo.vehicle?.model].filter(Boolean).join(" ")}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-6 py-4">
-                            <ServiceCategoryBadge category={wo.serviceType} />
-                          </td>
-                          <td className="whitespace-nowrap px-6 py-4">
-                            <WorkOrderStatusBadge status={wo.status} />
-                          </td>
+                          <td className="whitespace-nowrap px-6 py-4"><ServiceCategoryBadge category={wo.serviceType} /></td>
+                          <td className="whitespace-nowrap px-6 py-4"><QueueStatusBadge status={wo.status} hasTransaction={!!wo.transaction} /></td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
-                            {wo.employee?.name || "-"}
+                            {[
+                              ...(wo.services?.flatMap(s => s.employees || []) || []),
+                              ...(wo.historyItems?.flatMap(h => h.employees || []) || []),
+                              ...(wo.parts?.flatMap(p => p.employees || []) || [])
+                            ].map(e => e.name).filter((v, i, a) => a.indexOf(v) === i).join(", ") || "-"}
                           </td>
-                          <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-foreground">
-                            {formatCurrency(wo.totalCost)}
-                          </td>
-                          <td className="whitespace-nowrap px-6 py-4 text-xs text-muted-foreground">
-                            {formatDateTime(wo.createdAt)}
-                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-foreground">{formatCurrency(wo.totalCost)}</td>
+                          <td className="whitespace-nowrap px-6 py-4 text-xs text-muted-foreground">{formatDateTime(wo.createdAt)}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-right">
                             <button
                               onClick={() => router.push(`/work-orders/${wo.id}`)}
@@ -551,27 +569,17 @@ export default function WorkOrdersPage() {
                   </table>
                 </div>
 
-                {/* Pagination */}
-                {pagination.totalPages > 1 && (
+                {tablePagination.totalPages > 1 && (
                   <div className="flex items-center justify-between border-t border-border px-6 py-3">
                     <p className="text-sm text-muted-foreground">
-                      Menampilkan {(pagination.page - 1) * pagination.limit + 1}–
-                      {Math.min(pagination.page * pagination.limit, pagination.total)} dari{" "}
-                      {pagination.total}
+                      {(tablePagination.page - 1) * tablePagination.limit + 1}–
+                      {Math.min(tablePagination.page * tablePagination.limit, tablePagination.total)} dari {tablePagination.total}
                     </p>
                     <div className="flex gap-1">
-                      <button
-                        onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                        disabled={pagination.page <= 1}
-                        className="rounded-xl p-2 text-muted-foreground hover:bg-accent disabled:opacity-50"
-                      >
+                      <button onClick={() => setTablePagination(p => ({ ...p, page: p.page - 1 }))} disabled={tablePagination.page <= 1} className="rounded-xl p-2 text-muted-foreground hover:bg-accent disabled:opacity-50">
                         <ChevronLeft className="h-4 w-4" />
                       </button>
-                      <button
-                        onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                        disabled={pagination.page >= pagination.totalPages}
-                        className="rounded-xl p-2 text-muted-foreground hover:bg-accent disabled:opacity-50"
-                      >
+                      <button onClick={() => setTablePagination(p => ({ ...p, page: p.page + 1 }))} disabled={tablePagination.page >= tablePagination.totalPages} className="rounded-xl p-2 text-muted-foreground hover:bg-accent disabled:opacity-50">
                         <ChevronRight className="h-4 w-4" />
                       </button>
                     </div>
@@ -581,7 +589,7 @@ export default function WorkOrdersPage() {
 
               {/* Mobile Card List */}
               <div className="space-y-3 md:hidden">
-                {workOrders.map((wo) => (
+                {tableOrders.map((wo) => (
                   <button
                     key={wo.id}
                     onClick={() => router.push(`/work-orders/${wo.id}`)}
@@ -590,60 +598,28 @@ export default function WorkOrdersPage() {
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-sm font-bold text-foreground">
-                            {wo.trackingToken}
-                          </span>
-                          <WorkOrderStatusBadge status={wo.status} />
+                          <span className="font-mono text-sm font-bold text-foreground">{wo.trackingToken}</span>
+                          <QueueStatusBadge status={wo.status} hasTransaction={!!wo.transaction} />
                         </div>
-                        <p className="text-sm text-foreground">
-                          {wo.vehicle?.customer?.phone ?? "-"}
-                        </p>
+                        <p className="text-sm text-foreground">{wo.vehicle?.customer?.phone ?? "-"}</p>
                       </div>
                       <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                     </div>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="rounded-lg bg-muted px-2 py-0.5 font-mono font-medium text-foreground">
-                        {wo.vehicle?.plateNumber ?? "-"}
-                      </span>
-                      <span>·</span>
-                      <ServiceCategoryBadge category={wo.serviceType} />
-                      <span>·</span>
-                      <span>{wo.employee?.name || "Belum ditugaskan"}</span>
-                    </div>
-
                     <div className="mt-3 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-foreground">
-                        {formatCurrency(wo.totalCost)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDateTime(wo.createdAt)}
-                      </span>
+                      <span className="text-sm font-semibold text-foreground">{formatCurrency(wo.totalCost)}</span>
+                      <span className="text-xs text-muted-foreground">{formatDateTime(wo.createdAt)}</span>
                     </div>
                   </button>
                 ))}
 
-                {/* Mobile Pagination */}
-                {pagination.totalPages > 1 && (
+                {tablePagination.totalPages > 1 && (
                   <div className="flex items-center justify-between pt-2">
-                    <p className="text-sm text-muted-foreground">
-                      {pagination.page}/{pagination.totalPages}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{tablePagination.page}/{tablePagination.totalPages}</p>
                     <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                        disabled={pagination.page <= 1}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => setTablePagination(p => ({ ...p, page: p.page - 1 }))} disabled={tablePagination.page <= 1}>
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                        disabled={pagination.page >= pagination.totalPages}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => setTablePagination(p => ({ ...p, page: p.page + 1 }))} disabled={tablePagination.page >= tablePagination.totalPages}>
                         <ChevronRight className="h-4 w-4" />
                       </Button>
                     </div>

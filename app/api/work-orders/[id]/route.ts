@@ -16,12 +16,26 @@ export async function GET(
     where: { id },
     include: {
       vehicle: { include: { customer: true } },
-      employee: true,
       user: { select: { id: true, name: true } },
-      services: { include: { service: true } },
-      parts: { include: { inventory: true } },
+      services: {
+        include: {
+          service: true,
+          employees: { select: { id: true, name: true, position: true } },
+        },
+      },
+      parts: {
+        include: {
+          inventory: true,
+          employees: { select: { id: true, name: true, position: true } },
+        },
+      },
       transaction: true,
-      historyItems: { orderBy: { createdAt: 'asc' } },
+      historyItems: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          employees: { select: { id: true, name: true, position: true } },
+        },
+      },
     },
   });
 
@@ -32,7 +46,7 @@ export async function GET(
   return NextResponse.json(workOrder);
 }
 
-// PATCH /api/work-orders/[id] — Update status or assign employee
+// PATCH /api/work-orders/[id] — Update status or assign employees per item
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -47,7 +61,7 @@ export async function PATCH(
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { status, employeeId } = body;
+  const { status, employeeAssignments } = body;
 
   const existing = await prisma.workOrder.findUnique({ where: { id } });
   if (!existing) {
@@ -79,83 +93,78 @@ export async function PATCH(
       if (!existing.startedAt) updateData.startedAt = new Date();
     } else if (status === "SELESAI") {
       if (!existing.completedAt) updateData.completedAt = new Date();
-      
-      // Auto-commission for CUCI
-      if (existing.serviceType === "CUCI") {
-        const empId = employeeId !== undefined ? employeeId : existing.employeeId;
-        if (empId) {
-          try {
-            // Check existing earning
-            const existingEarning = await prisma.employeeEarning.findFirst({
-              where: { workOrderId: id, earningType: "COMMISSION" }
-            });
-            
-            if (!existingEarning) {
-              // Try to find commission rate from services
-              const woServices = await prisma.workOrderService.findMany({
-                where: { workOrderId: id },
-                include: { service: { include: { commission: true } } }
-              });
-              
-              let totalCommission = 0;
-              woServices.forEach(ws => {
-                if (ws.service.commission) {
-                  const rate = Number(ws.service.commission.commissionRate) / 100;
-                  totalCommission += Number(ws.price) * rate;
-                }
-              });
-              
-              if (totalCommission > 0) {
-                const now = new Date();
-                await prisma.employeeEarning.create({
-                  data: {
-                    employeeId: empId,
-                    workOrderId: id,
-                    earningType: "COMMISSION",
-                    amount: totalCommission,
-                    month: now.getMonth() + 1,
-                    year: now.getFullYear()
-                  }
-                });
-              }
-            }
-          } catch (e) {
-            console.error("Failed to generate commission:", e);
-          }
-        }
+    }
+  }
+
+  // Handle employee assignments per item (only when PROSES)
+  if (employeeAssignments && Array.isArray(employeeAssignments)) {
+    if (existing.status !== "PROSES" && status !== "PROSES") {
+      return NextResponse.json(
+        { error: "Penugasan karyawan hanya bisa dilakukan saat status PROSES" },
+        { status: 400 }
+      );
+    }
+
+    for (const assignment of employeeAssignments) {
+      const { targetType, targetId, employeeIds } = assignment as {
+        targetType: "service" | "part" | "history";
+        targetId: string;
+        employeeIds: string[];
+      };
+
+      const connectData = employeeIds.map((empId: string) => ({ id: empId }));
+
+      if (targetType === "service") {
+        await prisma.workOrderService.update({
+          where: { id: targetId },
+          data: { employees: { set: connectData } },
+        });
+      } else if (targetType === "part") {
+        await prisma.workOrderPart.update({
+          where: { id: targetId },
+          data: { employees: { set: connectData } },
+        });
+      } else if (targetType === "history") {
+        await prisma.workOrderHistoryItem.update({
+          where: { id: targetId },
+          data: { employees: { set: connectData } },
+        });
       }
     }
   }
 
-  if (employeeId !== undefined) {
-    if (employeeId) {
-      const activeWoCount = await prisma.workOrder.count({
-        where: {
-          employeeId,
-          status: { in: ["ANTRI", "PROSES"] },
-          id: { not: id } // exclude the current work order
-        }
-      });
-      if (activeWoCount > 0) {
-        return NextResponse.json(
-          { error: "Karyawan ini sedang mengerjakan Work Order lain" },
-          { status: 400 }
-        );
-      }
-    }
-    updateData.employeeId = employeeId || null;
+  // Update the work order itself (status change, etc.)
+  if (Object.keys(updateData).length > 0) {
+    await prisma.workOrder.update({
+      where: { id },
+      data: updateData,
+    });
   }
 
-  const updated = await prisma.workOrder.update({
+  // Re-fetch and return the full work order
+  const updated = await prisma.workOrder.findUnique({
     where: { id },
-    data: updateData,
     include: {
       vehicle: { include: { customer: true } },
-      employee: true,
-      services: { include: { service: true } },
-      parts: { include: { inventory: true } },
+      services: {
+        include: {
+          service: true,
+          employees: { select: { id: true, name: true, position: true } },
+        },
+      },
+      parts: {
+        include: {
+          inventory: true,
+          employees: { select: { id: true, name: true, position: true } },
+        },
+      },
       transaction: true,
-      historyItems: { orderBy: { createdAt: 'asc' } },
+      historyItems: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          employees: { select: { id: true, name: true, position: true } },
+        },
+      },
     },
   });
 

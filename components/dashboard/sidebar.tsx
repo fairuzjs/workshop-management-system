@@ -22,6 +22,7 @@ import {
   LogOut,
   User,
   Archive,
+  ShoppingCart,
 } from "lucide-react";
 import { useSidebarStore } from "@/stores/sidebar-store";
 
@@ -30,6 +31,7 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   superAdminOnly?: boolean;
+  exact?: boolean;
 }
 
 interface NavSection {
@@ -45,6 +47,7 @@ const navSections: NavSection[] = [
       { title: "Work Orders", href: "/work-orders", icon: ClipboardList },
       { title: "Kendaraan", href: "/vehicles", icon: Car },
       { title: "Inventory", href: "/inventory", icon: Package },
+      { title: "Kasir", href: "/cashier", icon: ShoppingCart },
     ],
   },
   {
@@ -52,15 +55,14 @@ const navSections: NavSection[] = [
     items: [
       { title: "Transaksi", href: "/transactions", icon: Receipt },
       { title: "Pengeluaran", href: "/expenses", icon: Wallet },
-      { title: "Laporan", href: "/financial", icon: BarChart3 },
-      { title: "Tutup Buku", href: "/monthly-closing", icon: Archive, superAdminOnly: true },
+      { title: "Penggajian Harian", href: "/financial/daily-payroll", icon: CalendarCheck },
+      { title: "Laporan", href: "/financial", icon: BarChart3, exact: true },
     ],
   },
   {
     label: "Manajemen",
     items: [
       { title: "Karyawan", href: "/employees", icon: Users, superAdminOnly: true },
-      { title: "Payroll", href: "/payroll", icon: CalendarCheck, superAdminOnly: true },
       { title: "Pengaturan", href: "/settings", icon: Settings, superAdminOnly: true },
     ],
   },
@@ -143,9 +145,9 @@ export function Sidebar() {
             )}
             <ul className="flex flex-col gap-0.5">
               {section.items.map((item) => {
-                const isActive =
-                  pathname === item.href ||
-                  (item.href !== "/" && pathname.startsWith(item.href));
+                const isActive = item.exact
+                  ? pathname === item.href
+                  : pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href + "/"));
 
                 return (
                   <li key={item.href}>

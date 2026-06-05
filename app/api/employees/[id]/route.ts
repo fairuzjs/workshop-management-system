@@ -21,10 +21,10 @@ export async function PUT(
   const { name, position, email, phone, salary, isActive } = body;
 
   if (position) {
-    const validPositions = ["Mekanik", "Pencuci Mobil", "Hybrid"];
+    const validPositions = ["Mekanik", "Pencuci Mobil"];
     if (!validPositions.includes(position)) {
       return NextResponse.json(
-        { error: "Posisi tidak valid. Harus Mekanik, Pencuci Mobil, atau Hybrid" },
+        { error: "Posisi tidak valid. Harus Mekanik atau Pencuci Mobil" },
         { status: 400 }
       );
     }

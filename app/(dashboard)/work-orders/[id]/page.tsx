@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
+import { Badge } from "@/components/ui/badge";
 import {
   WorkOrderStatusBadge,
   ServiceCategoryBadge,
@@ -32,7 +33,15 @@ import {
   CreditCard,
   QrCode,
   ClipboardList,
+  Users,
+  X,
 } from "lucide-react";
+
+interface EmployeeRef {
+  id: string;
+  name: string;
+  position: string;
+}
 
 interface WorkOrderDetail {
   id: string;
@@ -51,10 +60,9 @@ interface WorkOrderDetail {
     color: string | null;
     customer: { phone: string; email: string | null };
   };
-  employee: { id: string; name: string; position: string } | null;
   user: { name: string };
-  services: { id: string; price: string; service: { name: string } }[];
-  parts: { id: string; qty: number; price: string; inventory: { name: string } }[];
+  services: { id: string; price: string; service: { name: string }; employees: EmployeeRef[] }[];
+  parts: { id: string; qty: number; price: string; inventory: { name: string }; employees: EmployeeRef[] }[];
   transaction: {
     id: string;
     amount: string;
@@ -62,7 +70,7 @@ interface WorkOrderDetail {
     status: string;
     paidAt: string | null;
   } | null;
-  historyItems: { id: string; title: string; description: string | null; price: string; createdAt: string }[];
+  historyItems: { id: string; title: string; description: string | null; price: string; createdAt: string; employees: EmployeeRef[] }[];
 }
 
 interface Employee {
@@ -93,19 +101,23 @@ export default function WorkOrderDetailPage() {
   const [updating, setUpdating] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Employees list
+  const [employees, setEmployees] = useState<Employee[]>([]);
+
   // Assign employee modal
   const [showAssign, setShowAssign] = useState(false);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [assignId, setAssignId] = useState("");
+  const [assignTarget, setAssignTarget] = useState<{
+    type: "service" | "part" | "history";
+    id: string;
+    name: string;
+    currentEmployeeIds: string[];
+  } | null>(null);
+  const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
 
   // Add part modal
   const [showAddPart, setShowAddPart] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [partForm, setPartForm] = useState({ inventoryId: "", qty: "1" });
-
-  // Payment modal
-  const [showPayment, setShowPayment] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("");
 
   // Add history item modal
   const [showAddHistory, setShowAddHistory] = useState(false);
@@ -130,9 +142,22 @@ export default function WorkOrderDetailPage() {
     }
   }, [id, router]);
 
+  const fetchEmployees = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/employees?availableFor=${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setEmployees(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   useEffect(() => {
     fetchWO();
-  }, [fetchWO]);
+    fetchEmployees();
+  }, [fetchWO, fetchEmployees]);
 
   const updateStatus = async (newStatus: string) => {
     if (!confirm(`Ubah status ke ${newStatus}?`)) return;
@@ -146,24 +171,58 @@ export default function WorkOrderDetailPage() {
     setUpdating(false);
   };
 
-  const assignEmployee = async () => {
+  // Open assign modal for a specific item
+  const openAssignModal = (
+    type: "service" | "part" | "history",
+    targetId: string,
+    name: string,
+    currentEmployees: EmployeeRef[]
+  ) => {
+    setAssignTarget({
+      type,
+      id: targetId,
+      name,
+      currentEmployeeIds: currentEmployees.map((e) => e.id),
+    });
+    setAssignSelectedIds(currentEmployees.map((e) => e.id));
+    setShowAssign(true);
+  };
+
+  // Save employee assignment
+  const saveAssignment = async () => {
+    if (!assignTarget) return;
     setUpdating(true);
     await fetch(`/api/work-orders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ employeeId: assignId }),
+      body: JSON.stringify({
+        employeeAssignments: [
+          {
+            targetType: assignTarget.type,
+            targetId: assignTarget.id,
+            employeeIds: assignSelectedIds,
+          },
+        ],
+      }),
     });
     setShowAssign(false);
+    setAssignTarget(null);
     await fetchWO();
     setUpdating(false);
   };
 
-  const openAssignModal = async () => {
-    const res = await fetch("/api/employees");
-    const data = await res.json();
-    setEmployees(data);
-    setAssignId(wo?.employee?.id || "");
-    setShowAssign(true);
+  // Toggle employee in multi-select
+  const toggleEmployee = (empId: string) => {
+    setAssignSelectedIds((prev) =>
+      prev.includes(empId)
+        ? prev.filter((id) => id !== empId)
+        : [...prev, empId]
+    );
+  };
+
+  // Single-select employee (for CUCI)
+  const selectSingleEmployee = (empId: string) => {
+    setAssignSelectedIds(empId ? [empId] : []);
   };
 
   const copyToken = () => {
@@ -214,6 +273,22 @@ export default function WorkOrderDetailPage() {
     setUpdating(false);
   };
 
+  const handleRemoveService = async (serviceId: string) => {
+    if (!confirm("Hapus layanan ini dari work order?")) return;
+    setUpdating(true);
+    const res = await fetch(`/api/work-orders/${id}/services`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serviceId }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || "Gagal menghapus layanan");
+    }
+    await fetchWO();
+    setUpdating(false);
+  };
+
   const handleAddHistory = async () => {
     setUpdating(true);
     const res = await fetch(`/api/work-orders/${id}/history-items`, {
@@ -222,7 +297,7 @@ export default function WorkOrderDetailPage() {
       body: JSON.stringify({
         title: historyForm.title,
         description: historyForm.description,
-        price: Number(historyForm.price) || 0,
+        price: parseInt(historyForm.price.replace(/\D/g, "")) || 0,
       }),
     });
     if (res.ok) {
@@ -245,24 +320,6 @@ export default function WorkOrderDetailPage() {
     setUpdating(false);
   };
 
-  const handlePayment = async () => {
-    if (!paymentMethod) return;
-    setUpdating(true);
-    const res = await fetch(`/api/work-orders/${id}/transaction`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentMethod }),
-    });
-    if (res.ok) {
-      setShowPayment(false);
-      await fetchWO();
-    } else {
-      const err = await res.json();
-      alert(err.error);
-    }
-    setUpdating(false);
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -281,6 +338,60 @@ export default function WorkOrderDetailPage() {
 
   const grandTotal = Number(wo.totalCost);
   const currentStep = wo.status === "SELESAI" ? 3 : wo.status === "PROSES" ? 2 : 1;
+  const isCuci = wo.serviceType === "CUCI";
+  const isProses = wo.status === "PROSES";
+
+  // Check if all layanan items have employees assigned (both SERVIS and CUCI)
+  const allServiceItems = [...(wo.services || []), ...(wo.historyItems || [])];
+  const hasMissingEmployee = allServiceItems.length > 0 && allServiceItems.some(
+    (item) => !((item as { employees?: EmployeeRef[] }).employees || []).length
+  );
+  const canMarkSelesai = !hasMissingEmployee;
+
+  // Collect all assigned employees across all items
+  const allAssignedEmployees: EmployeeRef[] = [];
+  const seenIds = new Set<string>();
+  [...(wo.services || []), ...(wo.parts || []), ...(wo.historyItems || [])].forEach((item) => {
+    ((item as { employees?: EmployeeRef[] }).employees || []).forEach((emp) => {
+      if (!seenIds.has(emp.id)) {
+        seenIds.add(emp.id);
+        allAssignedEmployees.push(emp);
+      }
+    });
+  });
+
+  // Employee badge component
+  const EmployeeBadges = ({ emps, targetType, targetId, itemName }: {
+    emps: EmployeeRef[];
+    targetType: "service" | "part" | "history";
+    targetId: string;
+    itemName: string;
+  }) => {
+    const isSingleSelect = isCuci && targetType !== "history";
+    return (
+      <div className="flex flex-wrap items-center gap-1 mt-1">
+        {emps.length > 0 ? (
+          emps.map((emp) => (
+            <span key={emp.id} className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+              <User className="h-3 w-3" />
+              {emp.name}
+            </span>
+          ))
+        ) : (
+          <span className="text-[11px] text-muted-foreground italic">Belum ditugaskan</span>
+        )}
+        {isProses && !wo.transaction && (
+          <button
+            onClick={() => openAssignModal(targetType, targetId, itemName, emps)}
+            className="inline-flex items-center gap-1 rounded-lg border border-dashed border-primary/30 px-2 py-0.5 text-[11px] font-medium text-primary/70 transition-colors hover:bg-primary/5 hover:text-primary"
+          >
+            <UserCheck className="h-3 w-3" />
+            {emps.length > 0 ? (isSingleSelect ? "Ubah" : "+ Tambah") : "Tugaskan"}
+          </button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -323,27 +434,29 @@ export default function WorkOrderDetailPage() {
         {/* Status Actions - desktop */}
         <div className="hidden gap-2 sm:flex">
           {wo.status === "ANTRI" && (
-            <>
-              <Button variant="outline" size="sm" onClick={openAssignModal}>
-                <UserCheck className="h-4 w-4" />
-                {wo.employee ? "Ganti Petugas" : "Tugaskan"}
-              </Button>
-              <Button size="sm" onClick={() => updateStatus("PROSES")} loading={updating}>
-                <Play className="h-4 w-4" />
-                Mulai Proses
-              </Button>
-            </>
+            <Button size="sm" onClick={() => updateStatus("PROSES")} loading={updating}>
+              <Play className="h-4 w-4" />
+              Mulai Proses
+            </Button>
           )}
           {wo.status === "PROSES" && (
-            <Button
-              size="sm"
-              onClick={() => updateStatus("SELESAI")}
-              loading={updating}
-              className="bg-success hover:bg-success/90"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Selesai
-            </Button>
+            <div className="relative group">
+              <Button
+                size="sm"
+                onClick={() => updateStatus("SELESAI")}
+                loading={updating}
+                disabled={!canMarkSelesai}
+                className="bg-success hover:bg-success/90"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Selesai
+              </Button>
+              {!canMarkSelesai && (
+                <div className="absolute right-0 top-full mt-1 w-56 rounded-lg bg-destructive/90 px-3 py-2 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                  Semua layanan jasa harus memiliki mekanik yang ditugaskan sebelum bisa diselesaikan.
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -409,8 +522,12 @@ export default function WorkOrderDetailPage() {
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Kontak
                 </p>
+                <p className="mt-1 text-sm font-medium text-foreground">
                   {wo.vehicle?.customer?.phone ?? "-"}
-                  {wo.vehicle?.customer?.email ?? "-"}
+                </p>
+                {wo.vehicle?.customer?.email && (
+                  <p className="text-xs text-muted-foreground">{wo.vehicle.customer.email}</p>
+                )}
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -438,14 +555,29 @@ export default function WorkOrderDetailPage() {
               {(wo.services || []).map((ws) => (
                 <div
                   key={ws.id}
-                  className="flex items-center justify-between rounded-xl bg-muted/50 px-4 py-3"
+                  className="rounded-xl bg-muted/50 px-4 py-3"
                 >
-                  <span className="text-sm text-foreground">
-                    {ws.service.name}
-                  </span>
-                  <span className="text-sm font-medium text-foreground">
-                    {formatCurrency(ws.price)}
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-foreground">
+                      {ws.service.name}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">
+                        {formatCurrency(ws.price)}
+                      </span>
+                      {wo.status !== "SELESAI" && !wo.transaction && (
+                        <button onClick={() => handleRemoveService(ws.id)} className="rounded-lg p-1 text-muted-foreground hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <EmployeeBadges
+                    emps={ws.employees || []}
+                    targetType="service"
+                    targetId={ws.id}
+                    itemName={ws.service.name}
+                  />
                 </div>
               ))}
               {(wo.parts?.length || 0) > 0 && (
@@ -456,20 +588,22 @@ export default function WorkOrderDetailPage() {
                   {(wo.parts || []).map((p) => (
                     <div
                       key={p.id}
-                      className="flex items-center justify-between rounded-xl bg-muted/50 px-4 py-3"
+                      className="rounded-xl bg-muted/50 px-4 py-3"
                     >
-                      <span className="text-sm text-foreground">
-                        {p.inventory.name} × {p.qty}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">
-                          {formatCurrency(Number(p.price) * p.qty)}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-foreground">
+                          {p.inventory.name} × {p.qty}
                         </span>
-                        {wo.status !== "SELESAI" && (
-                          <button onClick={() => handleRemovePart(p.id)} className="rounded-lg p-1 text-muted-foreground hover:text-destructive">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">
+                            {formatCurrency(Number(p.price) * p.qty)}
+                          </span>
+                          {wo.status !== "SELESAI" && (
+                            <button onClick={() => handleRemovePart(p.id)} className="rounded-lg p-1 text-muted-foreground hover:text-destructive">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -494,7 +628,7 @@ export default function WorkOrderDetailPage() {
           <div className="rounded-2xl border border-border bg-card p-5">
             <div className="mb-4 flex items-center gap-2">
               <ClipboardList className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Riwayat Pekerjaan Manual</h3>
+              <h3 className="font-semibold text-foreground">Tambah Jasa</h3>
             </div>
             <div className="space-y-3">
               {(wo.historyItems || []).map((h) => (
@@ -518,19 +652,25 @@ export default function WorkOrderDetailPage() {
                   {h.description && (
                     <span className="text-xs text-muted-foreground">{h.description}</span>
                   )}
+                  <EmployeeBadges
+                    emps={h.employees || []}
+                    targetType="history"
+                    targetId={h.id}
+                    itemName={h.title}
+                  />
                 </div>
               ))}
               {(wo.historyItems?.length || 0) === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-2">Belum ada riwayat pekerjaan tambahan.</p>
+                <p className="text-sm text-muted-foreground text-center py-2">Belum ada jasa tambahan.</p>
               )}
               
               {!wo.transaction ? (
                 <button onClick={() => { setHistoryForm({ title: "", description: "", price: "" }); setShowAddHistory(true); }} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-3 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary">
-                  <Plus className="h-4 w-4" /> Tambah Pekerjaan Manual
+                  <Plus className="h-4 w-4" /> Tambah Jasa Tambahan
                 </button>
               ) : (
                 <p className="mt-2 text-xs text-center text-warning bg-warning/10 p-2 rounded-lg">
-                  Riwayat pekerjaan terkunci karena transaksi sudah dibuat.
+                  Penambahan jasa terkunci karena transaksi sudah dibuat.
                 </p>
               )}
             </div>
@@ -571,9 +711,6 @@ export default function WorkOrderDetailPage() {
                     {formatCurrency(wo.transaction.amount)}
                   </span>
                 </div>
-                <Button size="sm" className="mt-3 w-full" variant="outline" onClick={() => router.push(`/transactions/${wo.transaction!.id}`)}>
-                  <Receipt className="h-4 w-4" /> Lihat Transaksi
-                </Button>
               </div>
             ) : (
               <div>
@@ -581,7 +718,7 @@ export default function WorkOrderDetailPage() {
                   Belum ada transaksi
                 </p>
                 {wo.status === "SELESAI" ? (
-                  <Button size="sm" className="mt-3 w-full" onClick={() => { setPaymentMethod(""); setShowPayment(true); }}>
+                  <Button size="sm" className="mt-3 w-full" onClick={() => router.push(`/cashier?woId=${wo.id}`)}>
                     <Receipt className="h-4 w-4" /> Proses Pembayaran
                   </Button>
                 ) : (
@@ -627,23 +764,32 @@ export default function WorkOrderDetailPage() {
             </div>
           </div>
 
-          {/* Employee */}
+          {/* Petugas (summary of all assigned employees) */}
           <div className="rounded-2xl border border-border bg-card p-5">
             <div className="mb-4 flex items-center gap-2">
-              <User className="h-5 w-5 text-primary" />
+              <Users className="h-5 w-5 text-primary" />
               <h3 className="font-semibold text-foreground">Petugas</h3>
             </div>
-            {wo.employee ? (
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {wo.employee?.name ?? "-"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {wo.employee?.position ?? "-"}
-                </p>
+            {allAssignedEmployees.length > 0 ? (
+              <div className="space-y-2">
+                {allAssignedEmployees.map((emp) => (
+                  <div key={emp.id} className="flex items-center gap-3 rounded-xl bg-muted/50 px-3 py-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                      <User className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{emp.name}</p>
+                      <p className="text-xs text-muted-foreground">{emp.position}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Belum ditugaskan</p>
+              <p className="text-sm text-muted-foreground">
+                {isProses
+                  ? "Klik tombol \"Tugaskan\" pada setiap layanan untuk menugaskan petugas."
+                  : "Belum ada petugas yang ditugaskan."}
+              </p>
             )}
           </div>
         </div>
@@ -653,16 +799,10 @@ export default function WorkOrderDetailPage() {
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 px-4 py-3 backdrop-blur-md sm:hidden">
         <div className="flex gap-2">
           {wo.status === "ANTRI" && (
-            <>
-              <Button variant="outline" size="sm" className="flex-1" onClick={openAssignModal}>
-                <UserCheck className="h-4 w-4" />
-                {wo.employee ? "Ganti" : "Tugaskan"}
-              </Button>
-              <Button size="sm" className="flex-1" onClick={() => updateStatus("PROSES")} loading={updating}>
-                <Play className="h-4 w-4" />
-                Mulai
-              </Button>
-            </>
+            <Button size="sm" className="flex-1" onClick={() => updateStatus("PROSES")} loading={updating}>
+              <Play className="h-4 w-4" />
+              Mulai
+            </Button>
           )}
           {wo.status === "PROSES" && (
             <>
@@ -677,14 +817,15 @@ export default function WorkOrderDetailPage() {
                 className="flex-1 bg-success hover:bg-success/90"
                 onClick={() => updateStatus("SELESAI")}
                 loading={updating}
+                disabled={!canMarkSelesai}
               >
                 <CheckCircle2 className="h-4 w-4" />
-                Selesai
+                {!canMarkSelesai ? "Pilih Mekanik Dulu" : "Selesai"}
               </Button>
             </>
           )}
           {wo.status === "SELESAI" && !wo.transaction && (
-            <Button size="sm" className="flex-1" onClick={() => { setPaymentMethod(""); setShowPayment(true); }}>
+            <Button size="sm" className="flex-1" onClick={() => router.push(`/cashier?woId=${wo.id}`)}>
               <Receipt className="h-4 w-4" />
               Proses Pembayaran
             </Button>
@@ -696,13 +837,74 @@ export default function WorkOrderDetailPage() {
       <div className="h-20 sm:hidden" />
 
       {/* Assign Employee Modal */}
-      <Modal isOpen={showAssign} onClose={() => setShowAssign(false)} title="Tugaskan Petugas">
+      <Modal
+        isOpen={showAssign}
+        onClose={() => setShowAssign(false)}
+        title={`Tugaskan Petugas — ${assignTarget?.name || ""}`}
+        description={assignTarget?.type === "service" ? "Cuci mobil: pilih satu karyawan" : "Servis: bisa pilih beberapa mekanik"}
+      >
         <div className="space-y-4">
-          <Select label="Petugas" value={assignId} onChange={(e) => setAssignId(e.target.value)}
-            options={employees.map((e) => ({ value: e.id, label: `${e.name} — ${e.position}` }))} placeholder="Pilih petugas" />
+          {assignTarget?.type === "service" ? (
+            /* CUCI: Single select dropdown */
+            <Select
+              label="Petugas"
+              value={assignSelectedIds[0] || ""}
+              onChange={(e) => selectSingleEmployee(e.target.value)}
+              options={employees.filter(e => e.position === "Pencuci Mobil").map((e) => ({ value: e.id, label: `${e.name} — ${e.position}` }))}
+              placeholder="Pilih petugas"
+            />
+          ) : (
+            /* SERVIS: Multi-select checkbox list */
+            <div>
+              <label className="text-sm font-medium text-foreground mb-2 block">
+                Pilih Mekanik
+              </label>
+              <div className="max-h-60 space-y-1 overflow-y-auto rounded-xl border border-input p-2">
+                {employees.filter(e => e.position === "Mekanik").length === 0 && (
+                  <p className="p-3 text-center text-sm text-muted-foreground">Tidak ada mekanik tersedia</p>
+                )}
+                {employees.filter(e => e.position === "Mekanik").map((emp) => {
+                  const isChecked = assignSelectedIds.includes(emp.id);
+                  return (
+                    <button
+                      key={emp.id}
+                      type="button"
+                      onClick={() => toggleEmployee(emp.id)}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                        isChecked
+                          ? "bg-primary/10 ring-1 ring-primary/30"
+                          : "hover:bg-muted/50"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "flex h-5 w-5 items-center justify-center rounded-md border-2 transition-colors",
+                          isChecked
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-input"
+                        )}
+                      >
+                        {isChecked && <CheckCircle2 className="h-3.5 w-3.5" />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{emp.name}</p>
+                        <p className="text-xs text-muted-foreground">{emp.position}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {assignSelectedIds.length > 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {assignSelectedIds.length} mekanik dipilih — komisi jasa 55% dibagi rata
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="outline" onClick={() => setShowAssign(false)} fullWidth className="sm:w-auto">Batal</Button>
-            <Button onClick={assignEmployee} loading={updating} fullWidth className="sm:w-auto">Simpan</Button>
+            <Button onClick={saveAssignment} loading={updating} fullWidth className="sm:w-auto">Simpan</Button>
           </div>
         </div>
       </Modal>
@@ -733,37 +935,22 @@ export default function WorkOrderDetailPage() {
         <div className="space-y-4">
           <Input label="Nama Pekerjaan" placeholder="Contoh: Setel Rem Tangan" value={historyForm.title} onChange={(e) => setHistoryForm({ ...historyForm, title: e.target.value })} />
           <Input label="Deskripsi (Opsional)" placeholder="Keterangan tambahan" value={historyForm.description} onChange={(e) => setHistoryForm({ ...historyForm, description: e.target.value })} />
-          <Input label="Harga" type="number" min={0} value={historyForm.price} onChange={(e) => setHistoryForm({ ...historyForm, price: e.target.value })} />
+          <Input 
+            label="Harga" 
+            value={historyForm.price} 
+            onChange={(e) => {
+              let raw = e.target.value.replace(/\D/g, "");
+              if (raw) {
+                setHistoryForm({ ...historyForm, price: new Intl.NumberFormat("id-ID").format(parseInt(raw)) });
+              } else {
+                setHistoryForm({ ...historyForm, price: "" });
+              }
+            }} 
+          />
           
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button variant="outline" onClick={() => setShowAddHistory(false)} fullWidth className="sm:w-auto">Batal</Button>
             <Button onClick={handleAddHistory} loading={updating} disabled={!historyForm.title || !historyForm.price} fullWidth className="sm:w-auto">Simpan</Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Payment Modal */}
-      <Modal isOpen={showPayment} onClose={() => setShowPayment(false)} title="Proses Pembayaran" description={`Total: ${formatCurrency(grandTotal)}`}>
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">Pilih metode pembayaran</p>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { id: "CASH", label: "Cash", icon: Banknote },
-              { id: "TRANSFER", label: "Transfer", icon: CreditCard },
-              { id: "QRIS", label: "QRIS", icon: QrCode },
-            ].map((method) => (
-              <button key={method.id} onClick={() => setPaymentMethod(method.id)}
-                className={`flex flex-col items-center gap-2 rounded-xl border p-4 transition-all ${
-                  paymentMethod === method.id ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border hover:border-primary/30"
-                }`}>
-                <method.icon className={`h-6 w-6 ${paymentMethod === method.id ? "text-primary" : "text-muted-foreground"}`} />
-                <span className="text-sm font-medium">{method.label}</span>
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={() => setShowPayment(false)} fullWidth className="sm:w-auto">Batal</Button>
-            <Button onClick={handlePayment} loading={updating} disabled={!paymentMethod} fullWidth className="sm:w-auto">Bayar {formatCurrency(grandTotal)}</Button>
           </div>
         </div>
       </Modal>

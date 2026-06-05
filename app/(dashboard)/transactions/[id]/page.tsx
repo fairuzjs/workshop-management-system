@@ -16,6 +16,7 @@ import {
   QrCode,
   Loader2,
 } from "lucide-react";
+import { ReceiptModal } from "@/components/receipt-modal";
 
 interface TransactionDetail {
   id: string;
@@ -54,6 +55,7 @@ export default function TransactionDetailPage() {
   const { id } = useParams();
   const [tx, setTx] = useState<TransactionDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showReceipt, setShowReceipt] = useState(false);
 
   const fetchTransaction = useCallback(async () => {
     try {
@@ -248,7 +250,7 @@ export default function TransactionDetailPage() {
                 <p className="text-xs text-muted-foreground mb-1">Petugas (Teknisi)</p>
                 <div className="flex items-center gap-2 text-sm text-foreground">
                   <User className="h-4 w-4 text-muted-foreground" />
-                  <span>{wo.employee?.name ?? "Tidak ada data"}</span>
+                  <span>{wo.services?.flatMap((s: any) => s.employees || []).map((e: any) => e.name).filter((v: string, i: number, a: string[]) => a.indexOf(v) === i).join(", ") || "Tidak ada data"}</span>
                 </div>
               </div>
 
@@ -256,13 +258,19 @@ export default function TransactionDetailPage() {
           </div>
           
           <button 
-            onClick={() => window.print()}
+            onClick={() => setShowReceipt(true)}
             className="w-full rounded-xl bg-primary text-primary-foreground font-semibold h-12 hover:bg-primary/90 transition-colors"
           >
             Cetak Struk
           </button>
         </div>
       </div>
+
+      <ReceiptModal 
+        isOpen={showReceipt}
+        onClose={() => setShowReceipt(false)}
+        transaction={tx}
+      />
     </div>
   );
 }

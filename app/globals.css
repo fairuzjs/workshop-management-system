@@ -180,3 +180,29 @@ textarea {
 html, body {
   overflow-x: hidden;
 }
+
+/* Print Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #receipt-print-area, #receipt-print-area *,
+  #report-print-area, #report-print-area * {
+    visibility: visible;
+  }
+  #receipt-print-area, #report-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    border: none;
+  }
+  /* Optional: Force monochrome for thermal */
+  #receipt-print-area {
+    color: black !important;
+    background: white !important;
+  }
+}
