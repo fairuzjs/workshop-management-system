@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   Filter,
   ArrowRight,
 } from "lucide-react";
+import { ReceiptModal } from "@/components/receipt-modal";
 
 interface TransactionItem {
   id: string;
@@ -31,8 +32,14 @@ interface TransactionItem {
     serviceType: string;
     vehicle: {
       plateNumber: string;
-      customer: { phone: string };
+      brand: string | null;
+      model: string | null;
+      customer: { name: string | null; phone: string };
     };
+    employee?: { name: string };
+    services: { price: string; service: { name: string } }[];
+    parts: { qty: number; price: string; inventory: { name: string } }[];
+    historyItems: { title: string; price: string }[];
   };
 }
 
@@ -56,6 +63,7 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("");
+  const [receiptModalTx, setReceiptModalTx] = useState<any | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -138,35 +146,42 @@ export default function TransactionsPage() {
                 <tbody className="divide-y divide-border">
                   {transactions.map((tx) => {
                     const MethodIcon = methodIcon[tx.paymentMethod] || Banknote;
+                    const date = formatDateTime(tx.paidAt || tx.createdAt);
+                    const totalSvc = (tx.workOrder?.services || []).reduce((s: number, sv: any) => s + Number(sv.price), 0)
+                      + (tx.workOrder?.historyItems || []).reduce((s: number, h: any) => s + Number(h.price), 0);
+                    const totalParts = (tx.workOrder?.parts || []).reduce((s: number, p: any) => s + Number(p.price) * p.qty, 0);
+
                     return (
-                      <tr key={tx.id} className="transition-colors hover:bg-muted/30">
-                        <td className="whitespace-nowrap px-6 py-4 font-mono text-sm font-semibold text-foreground">{tx.workOrder?.trackingToken ?? "-"}</td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground">{tx.workOrder?.vehicle?.customer?.phone ?? "-"}</td>
-                        <td className="whitespace-nowrap px-6 py-4">
-                          <span className="rounded-lg bg-muted px-2 py-0.5 font-mono text-xs font-medium text-foreground">{tx.workOrder?.vehicle?.plateNumber ?? "-"}</span>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4">
-                          <div className="flex items-center gap-1.5 text-sm text-foreground">
-                            <MethodIcon className="h-4 w-4 text-muted-foreground" />
-                            {tx.paymentMethod}
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4">
-                          <Badge variant={tx.status === "LUNAS" ? "success" : "warning"}>
-                            {tx.status}
-                          </Badge>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-foreground">{formatCurrency(tx.amount)}</td>
-                        <td className="whitespace-nowrap px-6 py-4 text-xs text-muted-foreground">{formatDateTime(tx.paidAt || tx.createdAt)}</td>
-                        <td className="whitespace-nowrap px-6 py-4 text-right">
-                          <button
-                            onClick={() => router.push(`/transactions/${tx.id}`)}
-                            className="rounded-xl bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-                          >
-                            Detail
-                          </button>
-                        </td>
-                      </tr>
+                      <React.Fragment key={tx.id}>
+                        <tr className="transition-colors hover:bg-muted/30">
+                          <td className="whitespace-nowrap px-6 py-4 font-mono text-sm font-semibold text-foreground">{tx.workOrder?.trackingToken ?? "-"}</td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground">{tx.workOrder?.vehicle?.customer?.phone ?? "-"}</td>
+                          <td className="whitespace-nowrap px-6 py-4">
+                            <span className="rounded-lg bg-muted px-2 py-0.5 font-mono text-xs font-medium text-foreground">{tx.workOrder?.vehicle?.plateNumber ?? "-"}</span>
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4">
+                            <div className="flex items-center gap-1.5 text-sm text-foreground">
+                              <MethodIcon className="h-4 w-4 text-muted-foreground" />
+                              {tx.paymentMethod}
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4">
+                            <Badge variant={tx.status === "LUNAS" ? "success" : "warning"}>
+                              {tx.status}
+                            </Badge>
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-foreground">{formatCurrency(tx.amount)}</td>
+                          <td className="whitespace-nowrap px-6 py-4 text-xs text-muted-foreground">{date}</td>
+                          <td className="whitespace-nowrap px-6 py-4 text-right">
+                            <button
+                              onClick={() => setReceiptModalTx(tx)}
+                              className="rounded-xl bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                            >
+                              Detail Struk
+                            </button>
+                          </td>
+                        </tr>
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
@@ -194,37 +209,43 @@ export default function TransactionsPage() {
           <div className="space-y-3 md:hidden">
             {transactions.map((tx) => {
               const MethodIcon = methodIcon[tx.paymentMethod] || Banknote;
+              const date = formatDateTime(tx.paidAt || tx.createdAt);
+              const totalSvc = (tx.workOrder?.services || []).reduce((s: number, sv: any) => s + Number(sv.price), 0)
+                + (tx.workOrder?.historyItems || []).reduce((s: number, h: any) => s + Number(h.price), 0);
+              const totalParts = (tx.workOrder?.parts || []).reduce((s: number, p: any) => s + Number(p.price) * p.qty, 0);
+
               return (
-                <button
-                  key={tx.id}
-                  onClick={() => router.push(`/transactions/${tx.id}`)}
-                  className="w-full rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-all hover:shadow-md"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-bold text-foreground">
-                          {tx.workOrder?.trackingToken ?? "-"}
-                        </span>
-                        <Badge variant={tx.status === "LUNAS" ? "success" : "warning"}>
-                          {tx.status}
-                        </Badge>
+                <div key={tx.id} className="w-full rounded-2xl border border-border bg-card overflow-hidden shadow-sm transition-all hover:shadow-md">
+                  <button
+                    onClick={() => setReceiptModalTx(tx)}
+                    className="w-full text-left p-4"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-bold text-foreground">
+                            {tx.workOrder?.trackingToken ?? "-"}
+                          </span>
+                          <Badge variant={tx.status === "LUNAS" ? "success" : "warning"}>
+                            {tx.status}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {tx.workOrder?.vehicle?.customer?.phone ?? "-"} · {tx.workOrder?.vehicle?.plateNumber ?? "-"}
+                        </p>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {tx.workOrder?.vehicle?.customer?.phone ?? "-"} · {tx.workOrder?.vehicle?.plateNumber ?? "-"}
-                      </p>
+                      <ChevronRight className="h-4 w-4 shrink-0 transition-transform text-muted-foreground" />
                     </div>
-                    <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <MethodIcon className="h-3.5 w-3.5" />
-                      {tx.paymentMethod}
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <MethodIcon className="h-3.5 w-3.5" />
+                        {tx.paymentMethod}
+                      </div>
+                      <span className="text-sm font-bold text-foreground">{formatCurrency(tx.amount)}</span>
                     </div>
-                    <span className="text-sm font-bold text-foreground">{formatCurrency(tx.amount)}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(tx.paidAt || tx.createdAt)}</p>
-                </button>
+                    <p className="mt-1 text-xs text-muted-foreground">{date}</p>
+                  </button>
+                </div>
               );
             })}
 
@@ -244,6 +265,12 @@ export default function TransactionsPage() {
           </div>
         </>
       )}
+
+      <ReceiptModal 
+        isOpen={!!receiptModalTx}
+        onClose={() => setReceiptModalTx(null)}
+        transaction={receiptModalTx}
+      />
     </div>
   );
 }

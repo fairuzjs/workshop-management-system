@@ -74,3 +74,26 @@ export function ServiceCategoryBadge({ category }: { category: string }) {
 
   return <Badge variant={variant}>{label}</Badge>;
 }
+
+// Queue display badge — derives visual status from WO status + transaction
+export function QueueStatusBadge({ status, hasTransaction }: { status: string; hasTransaction?: boolean }) {
+  if (status === "SELESAI" && hasTransaction) {
+    return <Badge variant="success">Lunas</Badge>;
+  }
+  if (status === "SELESAI") {
+    return <Badge variant="warning" className="bg-amber-500/10 text-amber-600 border-amber-500/20">Siap Bayar</Badge>;
+  }
+
+  const config: Record<string, { label: string; variant: BadgeVariant }> = {
+    ANTRI: { label: "Antri", variant: "warning" },
+    PROSES: { label: "Proses", variant: "primary" },
+  };
+
+  const { label, variant } = config[status] || {
+    label: status,
+    variant: "default" as BadgeVariant,
+  };
+
+  return <Badge variant={variant}>{label}</Badge>;
+}
+

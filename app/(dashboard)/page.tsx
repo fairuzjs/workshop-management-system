@@ -20,51 +20,42 @@ export default async function DashboardPage(props: { searchParams: Promise<{ per
   }
 
   // Fetch dashboard stats
-  const [
-    totalWorkOrders,
-    activeWorkOrders,
-    completedToday,
-    totalRevenue,
-    totalExpense,
-    totalSalary,
-    totalEarning,
-  ] = await Promise.all([
-    prisma.workOrder.count(),
-    prisma.workOrder.count({
-      where: { status: { in: ["ANTRI", "PROSES"] } },
-    }),
-    prisma.workOrder.count({
-      where: {
-        status: "SELESAI",
-        completedAt: {
-          gte: new Date(new Date().setHours(0, 0, 0, 0)),
-        },
+  // Fetch dashboard stats sequentially to prevent connection pooling exhaustion
+  const totalWorkOrders = await prisma.workOrder.count();
+  const activeWorkOrders = await prisma.workOrder.count({
+    where: { status: { in: ["ANTRI", "PROSES"] } },
+  });
+  const completedToday = await prisma.workOrder.count({
+    where: {
+      status: "SELESAI",
+      completedAt: {
+        gte: new Date(new Date().setHours(0, 0, 0, 0)),
       },
-    }),
-    prisma.transaction.aggregate({
-      _sum: { amount: true },
-      where: { 
-        status: "LUNAS",
-        ...(Object.keys(dateFilter).length > 0 ? { paidAt: dateFilter } : {})
-      },
-    }),
-    prisma.expense.aggregate({
-      _sum: { amount: true },
-      where: {
-        ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {})
-      }
-    }),
-    prisma.employee.aggregate({
-      _sum: { salary: true },
-      where: { isActive: true },
-    }),
-    prisma.employeeEarning.aggregate({
-      _sum: { amount: true },
-      where: {
-        ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {})
-      }
-    }),
-  ]);
+    },
+  });
+  const totalRevenue = await prisma.transaction.aggregate({
+    _sum: { amount: true },
+    where: { 
+      status: "LUNAS",
+      ...(Object.keys(dateFilter).length > 0 ? { paidAt: dateFilter } : {})
+    },
+  });
+  const totalExpense = await prisma.expense.aggregate({
+    _sum: { amount: true },
+    where: {
+      ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {})
+    }
+  });
+  const totalSalary = await prisma.employee.aggregate({
+    _sum: { salary: true },
+    where: { isActive: true },
+  });
+  const totalEarning = await prisma.employeeEarning.aggregate({
+    _sum: { amount: true },
+    where: {
+      ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {})
+    }
+  });
 
   const rev = Number(totalRevenue._sum.amount || 0);
   const exp = Number(totalExpense._sum.amount || 0);
@@ -78,7 +69,6 @@ export default async function DashboardPage(props: { searchParams: Promise<{ per
       vehicle: {
         include: { customer: true },
       },
-      employee: true,
     },
   });
 
@@ -101,7 +91,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ per
         serviceType: wo.serviceType,
         customerPhone: wo.vehicle.customer.phone ?? "",
         plateNumber: wo.vehicle.plateNumber,
-        employeeName: wo.employee?.name || "-",
+        employeeName: "-",
         totalCost: Number(wo.totalCost),
         createdAt: wo.createdAt.toISOString(),
       }))}

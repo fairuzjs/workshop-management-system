@@ -89,7 +89,6 @@ export async function POST(
     where: { id },
     include: {
       vehicle: { include: { customer: true } },
-      employee: true,
       services: { include: { service: true } },
       parts: { include: { inventory: true } },
       transaction: true,

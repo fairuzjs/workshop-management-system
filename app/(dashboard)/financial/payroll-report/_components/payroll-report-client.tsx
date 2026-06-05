@@ -6,6 +6,7 @@ import { StatCard } from "@/components/dashboard/stat-card";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Users, BadgeDollarSign, Wallet, Activity } from "lucide-react";
+import { FinancialTabs } from "@/components/dashboard/financial-tabs";
 
 interface PayrollSummary {
   totalSalary: number;
@@ -23,7 +24,7 @@ interface PayrollEmployee {
   total: number;
 }
 
-export default function PayrollPage() {
+export default function PayrollPageClient({ userRole }: { userRole: string }) {
   const [data, setData] = useState<PayrollEmployee[]>([]);
   const [summary, setSummary] = useState<PayrollSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,6 +57,8 @@ export default function PayrollPage() {
 
   return (
     <div className="space-y-6">
+      <FinancialTabs activeTab="payroll-report" userRole={userRole} />
+
       <PageHeader
         title="Penggajian Karyawan"
         description="Laporan gaji dan komisi bulanan"

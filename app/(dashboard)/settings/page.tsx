@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { Badge } from "@/components/ui/badge";
+import { CuciPriceEditor } from "./cuci-price-editor";
+import { CuciCommissionEditor } from "./cuci-commission-editor";
+import { MechanicCommissionEditor } from "@/components/dashboard/mechanic-commission-editor";
 
 export const metadata: Metadata = {
   title: "Pengaturan | Workshop Management",
@@ -18,13 +21,18 @@ export default async function SettingsPage() {
     redirect("/");
   }
 
-  const [commissions, employeeCount, serviceCount] = await Promise.all([
+  const [commissions, employeeCount, serviceCount, cuciServices, mechanicSetting] = await Promise.all([
     prisma.serviceCommission.findMany({
       include: { service: true },
       orderBy: { service: { name: "asc" } },
     }),
     prisma.employee.count({ where: { isActive: true } }),
     prisma.service.count({ where: { isActive: true } }),
+    prisma.service.findMany({
+      where: { category: "CUCI", isActive: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.systemSetting.findUnique({ where: { id: "global" } })
   ]);
 
   const expenseCategories = [
@@ -138,11 +146,36 @@ export default async function SettingsPage() {
           </div>
         </div>
 
+        {/* HARGA CUCI MOBIL (Editable) */}
+        <div className="rounded-2xl border border-border bg-card shadow-sm md:col-span-2">
+          <div className="border-b border-border p-5 sm:p-6">
+            <h3 className="font-semibold text-foreground">Harga Cuci Mobil</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Harga preset cuci mobil yang muncul di kasir. Klik &ldquo;Edit Harga&rdquo; untuk mengubah.</p>
+          </div>
+          <div className="p-5 sm:p-6">
+            {cuciServices.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border p-8 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Belum ada layanan cuci.
+                </p>
+              </div>
+            ) : (
+              <CuciPriceEditor
+                initialServices={cuciServices.map((s) => ({
+                  id: s.id,
+                  name: s.name,
+                  price: Number(s.price),
+                }))}
+              />
+            )}
+          </div>
+        </div>
+
         {/* ATURAN KOMISI CUCI */}
         <div className="rounded-2xl border border-border bg-card shadow-sm md:col-span-2">
           <div className="border-b border-border p-5 sm:p-6">
             <h3 className="font-semibold text-foreground">Aturan Komisi Cuci</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Persentase komisi otomatis untuk Pencuci Mobil / Hybrid.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Persentase komisi otomatis untuk Pencuci Mobil.</p>
           </div>
           <div className="p-5 sm:p-6">
             {commissions.length === 0 ? (
@@ -152,33 +185,30 @@ export default async function SettingsPage() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-border">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-border bg-muted/50">
-                    <tr>
-                      <th className="px-6 py-3 text-left font-medium text-muted-foreground">Layanan Cuci</th>
-                      <th className="px-6 py-3 text-left font-medium text-muted-foreground">Harga</th>
-                      <th className="px-6 py-3 text-right font-medium text-muted-foreground">Komisi (%)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {commissions.map((c) => (
-                      <tr key={c.id} className="border-b border-border transition-colors hover:bg-muted/50 last:border-0">
-                        <td className="px-6 py-3.5 font-medium text-foreground">
-                          {c.service.name}
-                        </td>
-                        <td className="px-6 py-3.5 text-muted-foreground">
-                          Rp {Number(c.service.price).toLocaleString("id-ID")}
-                        </td>
-                        <td className="px-6 py-3.5 text-right font-semibold text-success">
-                          {Number(c.commissionRate)}%
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <CuciCommissionEditor
+                initialCommissions={commissions.map((c) => ({
+                  id: c.serviceId,
+                  name: c.service.name,
+                  price: Number(c.service.price),
+                  commissionNominal: Number(c.commissionNominal),
+                }))}
+              />
             )}
+          </div>
+        </div>
+
+
+        {/* PENGATURAN KOMISI MEKANIK */}
+        <div className="rounded-2xl border border-border bg-card shadow-sm md:col-span-2">
+          <div className="border-b border-border p-5 sm:p-6">
+            <h3 className="font-semibold text-foreground">Pengaturan Komisi Mekanik</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Persentase komisi otomatis untuk Mekanik Servis.</p>
+          </div>
+          <div className="p-5 sm:p-6">
+            <MechanicCommissionEditor 
+              initialServicePct={mechanicSetting ? Number(mechanicSetting.serviceCommissionPct) : 55}
+              initialPartPct={mechanicSetting ? Number(mechanicSetting.partCommissionPct) : 3}
+            />
           </div>
         </div>
       </div>

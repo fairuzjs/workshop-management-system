@@ -27,10 +27,17 @@ export async function GET(req: NextRequest) {
       vehicle: {
         include: { customer: true },
       },
-      employee: { select: { name: true, position: true } },
-      services: { include: { service: { select: { name: true, price: true } } } },
+      services: {
+        include: {
+          service: { select: { name: true, price: true } },
+          employees: { select: { name: true, position: true } },
+        },
+      },
       parts: { include: { inventory: { select: { name: true } } } },
-      historyItems: { select: { title: true, price: true }, orderBy: { createdAt: 'asc' } },
+      historyItems: {
+        select: { title: true, price: true, employees: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
     },
   });
 
@@ -59,7 +66,7 @@ export async function GET(req: NextRequest) {
     vehicleBrand: workOrder.vehicle.brand,
     vehicleModel: workOrder.vehicle.model,
     customerPhone: workOrder.vehicle.customer.phone,
-    employeeName: workOrder.employee?.name || null,
+    employeeName: null,
     services: workOrder.services.map((ws) => ({
       name: ws.service.name,
       price: Number(ws.service.price),

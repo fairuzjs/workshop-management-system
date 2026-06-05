@@ -17,7 +17,7 @@ export async function POST(
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { qty, type, notes } = body;
+  const { qty, type, notes, recordExpense } = body;
 
   if (!qty || qty <= 0 || !type) {
     return NextResponse.json(
@@ -46,7 +46,7 @@ export async function POST(
   }
 
   // Update stock and create log in transaction
-  const [updatedItem] = await prisma.$transaction([
+  const queries: any[] = [
     prisma.inventory.update({
       where: { id },
       data: {
@@ -61,7 +61,22 @@ export async function POST(
         notes: notes || null,
       },
     }),
-  ]);
+  ];
+
+  if (type === "IN" && recordExpense && Number(item.capitalPrice) > 0) {
+    queries.push(
+      prisma.expense.create({
+        data: {
+          category: "Pembelian Stok",
+          amount: Number(item.capitalPrice) * qty,
+          description: `Restock ${item.name} (${qty} ${item.unit}) - CASH`,
+        },
+      })
+    );
+  }
+
+  const results = await prisma.$transaction(queries);
+  const updatedItem = results[0];
 
   return NextResponse.json(updatedItem);
 }

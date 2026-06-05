@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
   const items = await prisma.inventory.findMany({
     where,
     orderBy: { name: "asc" },
+    include: { supplier: true },
   });
 
   // Filter low stock in JS since Prisma can't compare columns directly
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { name, category, qty, unit, minStock, price } = body;
+  const { name, category, qty, unit, minStock, capitalPrice, price, supplierId, rackPosition, paymentMethod } = body;
 
   if (!name || !unit || price === undefined) {
     return NextResponse.json(
@@ -59,20 +60,39 @@ export async function POST(req: NextRequest) {
       qty: qty || 0,
       unit,
       minStock: minStock || 0,
+      capitalPrice: capitalPrice || 0,
       price,
+      supplierId: supplierId || null,
+      rackPosition: rackPosition || null,
     },
   });
 
   // Log initial stock if qty > 0
   if (qty > 0) {
-    await prisma.inventoryLog.create({
-      data: {
-        inventoryId: item.id,
-        qty,
-        type: "IN",
-        notes: "Stok awal",
-      },
-    });
+    const logs = [];
+    logs.push(
+      prisma.inventoryLog.create({
+        data: {
+          inventoryId: item.id,
+          qty,
+          type: "IN",
+          notes: `Stok awal${paymentMethod ? ` (${paymentMethod})` : ""}`,
+        },
+      })
+    );
+
+    if (paymentMethod === "CASH" && capitalPrice > 0) {
+      logs.push(
+        prisma.expense.create({
+          data: {
+            category: "Pembelian Stok",
+            amount: capitalPrice * qty,
+            description: `Pembelian stok awal ${name} (${qty} ${unit}) - CASH`,
+          },
+        })
+      );
+    }
+    await prisma.$transaction(logs);
   }
 
   return NextResponse.json(item, { status: 201 });

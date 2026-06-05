@@ -59,7 +59,6 @@ const EmployeeForm = ({
         >
           <option value="Mekanik">Mekanik</option>
           <option value="Pencuci Mobil">Pencuci Mobil</option>
-          <option value="Hybrid">Hybrid</option>
         </select>
       </div>
       <Input

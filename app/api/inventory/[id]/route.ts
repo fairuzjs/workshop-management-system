@@ -41,14 +41,18 @@ export async function PUT(
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { name, category, unit, minStock, price } = body;
+  const { name, category, unit, minStock, capitalPrice, price, supplierId, rackPosition } = body;
 
-  const item = await prisma.inventory.update({
-    where: { id },
-    data: { name, category, unit, minStock, price },
-  });
-
-  return NextResponse.json(item);
+  try {
+    const item = await prisma.inventory.update({
+      where: { id },
+      data: { name, category, unit, minStock, capitalPrice: capitalPrice || 0, price, supplierId: supplierId || null, rackPosition: rackPosition || null },
+    });
+    return NextResponse.json(item);
+  } catch (error: any) {
+    console.error("Prisma update error:", error);
+    return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
+  }
 }
 
 // DELETE /api/inventory/[id]
@@ -63,3 +67,4 @@ export async function DELETE(
   await prisma.inventory.delete({ where: { id } });
   return NextResponse.json({ success: true });
 }
+

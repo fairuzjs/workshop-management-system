@@ -29,15 +29,13 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         workOrder: {
-          select: {
-            trackingToken: true,
-            serviceType: true,
+          include: {
             vehicle: {
-              select: {
-                plateNumber: true,
-                customer: { select: { phone: true } },
-              },
+              include: { customer: true },
             },
+            services: { include: { service: true, employees: { select: { id: true, name: true } } } },
+            parts: { include: { inventory: true } },
+            historyItems: true,
           },
         },
       },
