@@ -43,6 +43,16 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+
+  // Check if vehicle has work orders
+  const woCount = await prisma.workOrder.count({ where: { vehicleId: id } });
+  if (woCount > 0) {
+    return NextResponse.json(
+      { error: "Tidak bisa menghapus kendaraan karena masih memiliki Work Order terkait" },
+      { status: 400 }
+    );
+  }
+
   await prisma.vehicle.delete({ where: { id } });
   return NextResponse.json({ success: true });
 }

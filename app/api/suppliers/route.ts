@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+import { createSupplierSchema, parseZodError } from "@/lib/validations";
 
 export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
     const suppliers = await prisma.supplier.findMany({
       orderBy: { name: "asc" },
@@ -22,13 +27,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await req.json();
-    const { name, phone, address } = body;
 
-    if (!name || name.trim() === "") {
-      return NextResponse.json({ error: "Nama supplier wajib diisi" }, { status: 400 });
+    const parsed = createSupplierSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parseZodError(parsed.error) }, { status: 400 });
     }
+    const { name, phone, address } = parsed.data;
 
     const supplier = await prisma.supplier.create({
       data: {

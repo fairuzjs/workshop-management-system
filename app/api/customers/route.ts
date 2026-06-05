@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { createCustomerSchema, parseZodError } from "@/lib/validations";
 
 // GET /api/customers — List all customers with vehicles
 export async function GET(req: NextRequest) {
@@ -44,14 +45,19 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { name, phone, email, vehicle } = body;
 
-  if (!phone) {
-    return NextResponse.json(
-      { error: "Nomor telepon wajib diisi" },
-      { status: 400 }
-    );
+  const parsed = createCustomerSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parseZodError(parsed.error) }, { status: 400 });
   }
+  const { name, phone, email, vehicle } = parsed.data;
+
+  // Check for duplicate phone number
+  const existingCustomers = await prisma.customer.findMany({
+    where: { phone },
+    select: { id: true, name: true, phone: true },
+    take: 3,
+  });
 
   const customer = await prisma.customer.create({
     data: {
@@ -75,5 +81,10 @@ export async function POST(req: NextRequest) {
     include: { vehicles: true },
   });
 
-  return NextResponse.json(customer, { status: 201 });
+  const response: any = { ...customer };
+  if (existingCustomers.length > 0) {
+    response._warning = `Nomor HP "${phone}" sudah terdaftar atas nama: ${existingCustomers.map(c => c.name || '(tanpa nama)').join(', ')}. Customer tetap berhasil dibuat.`;
+  }
+
+  return NextResponse.json(response, { status: 201 });
 }

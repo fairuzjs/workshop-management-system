@@ -369,20 +369,26 @@ export default function WorkOrdersPage() {
                             </Button>
                           )}
                           {wo.status === "PROSES" && (() => {
-                            const hasEmployees = [
-                              ...(wo.services?.flatMap(s => s.employees || []) || []),
-                              ...(wo.historyItems?.flatMap(h => h.employees || []) || []),
-                              ...(wo.parts?.flatMap(p => p.employees || []) || [])
-                            ].length > 0;
+                            // Setiap item layanan (services + historyItems) harus punya minimal 1 karyawan
+                            const allServiceItems = [
+                              ...(wo.services || []),
+                              ...(wo.historyItems || []),
+                            ];
+                            const hasMissingEmployee =
+                              allServiceItems.length > 0 &&
+                              allServiceItems.some(
+                                (item) => !((item as { employees?: { name: string }[] }).employees || []).length
+                              );
+                            const canComplete = !hasMissingEmployee;
 
                             return (
                               <Button
                                 size="sm"
                                 onClick={(e) => { e.stopPropagation(); handleUpdateStatus(wo.id, "SELESAI"); }}
-                                disabled={updatingId !== null || !hasEmployees}
-                                title={!hasEmployees ? "Pilih mekanik terlebih dahulu di detail WO" : ""}
+                                disabled={updatingId !== null || !canComplete}
+                                title={!canComplete ? "Semua layanan jasa harus memiliki mekanik yang ditugaskan" : ""}
                                 className={`font-bold text-[10px] rounded-lg px-3 py-1.5 h-auto ${
-                                  !hasEmployees 
+                                  !canComplete 
                                     ? "bg-muted text-muted-foreground cursor-not-allowed" 
                                     : "bg-emerald-600 hover:bg-emerald-700 text-white"
                                 }`}

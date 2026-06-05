@@ -74,8 +74,25 @@ export async function DELETE(
 ) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if ((session.user as any)?.role !== "SUPERADMIN") {
+    return NextResponse.json({ error: "Hanya SUPERADMIN yang dapat menghapus customer" }, { status: 403 });
+  }
 
   const { id } = await params;
+
+  // Check if any vehicle under this customer has work orders
+  const vehiclesWithWO = await prisma.vehicle.findMany({
+    where: { customerId: id },
+    include: { _count: { select: { workOrders: true } } },
+  });
+
+  const hasWorkOrders = vehiclesWithWO.some((v) => v._count.workOrders > 0);
+  if (hasWorkOrders) {
+    return NextResponse.json(
+      { error: "Tidak bisa menghapus customer karena masih memiliki kendaraan dengan Work Order terkait" },
+      { status: 400 }
+    );
+  }
 
   await prisma.customer.delete({ where: { id } });
   return NextResponse.json({ success: true });

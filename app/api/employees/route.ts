@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { createEmployeeSchema, parseZodError } from "@/lib/validations";
 
 // GET /api/employees — List active employees
 export async function GET(req: NextRequest) {
@@ -9,9 +10,14 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const availableFor = url.searchParams.get("availableFor");
+  const includeInactive = url.searchParams.get("includeInactive") === "true";
+
+  const userRole = (session.user as any)?.role;
+  // Only SUPERADMIN can see inactive employees
+  const activeFilter = (includeInactive && userRole === "SUPERADMIN") ? {} : { isActive: true };
 
   const employees = await prisma.employee.findMany({
-    where: { isActive: true },
+    where: activeFilter,
     orderBy: { name: "asc" },
     include: {
       workOrderServices: {
@@ -77,29 +83,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { name, position, email, phone, salary, isActive } = body;
-
-  if (!name || !position) {
-    return NextResponse.json(
-      { error: "Nama dan posisi wajib diisi" },
-      { status: 400 }
-    );
+  const parsed = createEmployeeSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parseZodError(parsed.error) }, { status: 400 });
   }
-
-  const validPositions = ["Mekanik", "Pencuci Mobil"];
-  if (!validPositions.includes(position)) {
-    return NextResponse.json(
-      { error: "Posisi tidak valid. Harus Mekanik atau Pencuci Mobil" },
-      { status: 400 }
-    );
-  }
-
-  if (salary !== undefined && salary < 0) {
-    return NextResponse.json(
-      { error: "Gaji tidak boleh negatif" },
-      { status: 400 }
-    );
-  }
+  const { name, position, email, phone, salary, isActive } = parsed.data;
 
   const employee = await prisma.employee.create({
     data: {

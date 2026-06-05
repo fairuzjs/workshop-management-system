@@ -387,17 +387,6 @@ export default function TrackingPage() {
             </div>
           </div>
         </main>
-
-        {/* Footer */}
-        <footer className="border-t border-border/60 bg-card py-6">
-          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 sm:flex-row text-xs text-muted-foreground">
-            <span>© 2026 Workshop Management System. Hak Cipta Dilindungi.</span>
-            <div className="flex gap-6">
-              <span className="hover:text-foreground transition-colors cursor-pointer">Bantuan</span>
-              <span className="hover:text-foreground transition-colors cursor-pointer">Kontak</span>
-            </div>
-          </div>
-        </footer>
       </div>
     );
   }
@@ -766,14 +755,6 @@ export default function TrackingPage() {
           </div>
         </main>
       </div>
-
-      {/* Footer */}
-      <footer className="border-t border-border/60 bg-card py-6 mt-12">
-        <div className="mx-auto flex max-w-3xl flex-col items-center justify-between gap-4 px-6 sm:flex-row text-xs text-muted-foreground">
-          <span>© 2026 Workshop Management System. Portal Pelanggan Real-time.</span>
-          <span className="font-mono text-[10px]">© 2026</span>
-        </div>
-      </footer>
     </div>
   );
 }

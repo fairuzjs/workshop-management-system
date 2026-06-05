@@ -114,13 +114,13 @@ async function main() {
   // --- Service Commissions (for CUCI) ---
   await Promise.all([
     prisma.serviceCommission.create({
-      data: { serviceId: cuciSmall.id, commissionRate: 10 },
+      data: { serviceId: cuciSmall.id, commissionNominal: 10000 },
     }),
     prisma.serviceCommission.create({
-      data: { serviceId: cuciMedium.id, commissionRate: 12 },
+      data: { serviceId: cuciMedium.id, commissionNominal: 12000 },
     }),
     prisma.serviceCommission.create({
-      data: { serviceId: cuciLarge.id, commissionRate: 13 },
+      data: { serviceId: cuciLarge.id, commissionNominal: 13000 },
     }),
   ]);
 

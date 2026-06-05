@@ -38,7 +38,7 @@ interface CashierWO {
     model: string | null;
     customer: { name: string | null; phone: string };
   };
-  services: { id: string; price: string; service: { name: string }; employees: { id: string; name: string; position: string }[] }[];
+  services: { id: string; serviceId: string; price: string; service: { name: string }; employees: { id: string; name: string; position: string }[] }[];
   parts: { id: string; qty: number; price: string; inventory: { name: string }; employees: { id: string; name: string; position: string }[] }[];
   historyItems: { id: string; title: string; price: string; employees: { id: string; name: string; position: string }[] }[];
 }
@@ -62,6 +62,7 @@ interface JasaItem {
   name: string;
   price: number;
   employeeIds: string[];
+  serviceId?: string;
 }
 
 interface PartItem {
@@ -236,6 +237,7 @@ export default function CashierPage() {
       name: s.service.name,
       price: Number(s.price),
       employeeIds: (s.employees || []).map((e) => e.id),
+      serviceId: s.serviceId || undefined,
     }));
     // Pre-load existing history items (with pre-assigned employees from WO)
     const existingHistory: JasaItem[] = (selectedWO.historyItems || []).map((h) => ({
@@ -372,7 +374,8 @@ export default function CashierPage() {
           tempId: j.tempId,
           name: j.name,
           price: j.price,
-          employeeIds: j.employeeIds
+          employeeIds: j.employeeIds,
+          serviceId: j.serviceId,
         })),
         partItems: partCart.map(p => ({
           tempId: p.tempId,

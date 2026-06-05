@@ -118,7 +118,7 @@ model Customer {
 model Vehicle {
   id          String   @id @default(uuid())
   customerId  String   @map("customer_id")
-  plateNumber String   @map("plate_number")
+  plateNumber String   @unique @map("plate_number")
   type        String?
   brand       String?
   model       String?

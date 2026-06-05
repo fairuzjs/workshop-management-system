@@ -103,7 +103,20 @@ export async function POST(
           const now = new Date();
           
           let commissionPerPerson = 0;
-          const commRule = commissions.find(c => c.service.name === jasa.name);
+
+          // Determine serviceId for commission matching
+          let matchServiceId = jasa.serviceId;
+          if (!matchServiceId && jasa.tempId.startsWith("wo-svc-")) {
+            // Look up serviceId from the existing WorkOrderService
+            const svcId = jasa.tempId.replace("wo-svc-", "");
+            const woSvc = await tx.workOrderService.findUnique({ where: { id: svcId }, select: { serviceId: true } });
+            matchServiceId = woSvc?.serviceId;
+          }
+
+          // Match by serviceId first (reliable), fallback to name
+          const commRule = matchServiceId
+            ? commissions.find(c => c.serviceId === matchServiceId)
+            : commissions.find(c => c.service.name === jasa.name);
           
           if (commRule) {
             commissionPerPerson = Number(commRule.commissionNominal) / jasa.employeeIds.length;
@@ -143,7 +156,17 @@ export async function POST(
             }
           });
         } else {
-          // Create new part and deduct stock
+          // Create new part and deduct stock — validate stock first
+          const currentInventory = await tx.inventory.findUnique({
+            where: { id: part.inventoryId },
+            select: { qty: true, name: true },
+          });
+          if (!currentInventory || currentInventory.qty < part.qty) {
+            throw new Error(
+              `Stok ${currentInventory?.name || 'item'} tidak mencukupi (tersedia: ${currentInventory?.qty ?? 0}, dibutuhkan: ${part.qty})`
+            );
+          }
+
           await tx.workOrderPart.create({
             data: {
               workOrderId: id,
@@ -211,6 +234,9 @@ export async function POST(
     return NextResponse.json(transactionResult, { status: 201 });
   } catch (error: any) {
     console.error("Transaction Error:", error);
-    return NextResponse.json({ error: "Gagal memproses transaksi" }, { status: 500 });
+    const message = error?.message?.startsWith("Stok ")
+      ? error.message
+      : "Gagal memproses transaksi";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
