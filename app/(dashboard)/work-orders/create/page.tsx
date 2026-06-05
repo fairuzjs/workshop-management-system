@@ -1,10 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { AppPage } from "@/components/shared/app-page";
+import { PageHeader } from "@/components/shared/page-header";
+import { PageSection } from "@/components/shared/page-section";
+import { FilterBar } from "@/components/shared/filter-bar";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import {
@@ -13,11 +19,20 @@ import {
   Check,
   Car,
   Wrench,
-  UserCheck,
   ClipboardCheck,
+  User,
   Plus,
   Search,
+  Trash2,
+  Users,
 } from "lucide-react";
+
+interface Customer {
+  id: string;
+  name: string | null;
+  phone: string;
+  email: string | null;
+}
 
 interface Vehicle {
   id: string;
@@ -25,7 +40,8 @@ interface Vehicle {
   brand: string | null;
   model: string | null;
   color: string | null;
-  customer: { id: string; name: string; phone: string };
+  type: string | null;
+  customer: { id: string; name: string | null; phone: string };
 }
 
 interface Service {
@@ -35,17 +51,11 @@ interface Service {
   price: string;
 }
 
-interface Employee {
-  id: string;
-  name: string;
-  position: string;
-  _count?: { workOrders: number };
-}
-
 const steps = [
-  { id: 1, title: "Kendaraan", icon: Car },
-  { id: 2, title: "Layanan", icon: Wrench },
-  { id: 3, title: "Konfirmasi", icon: ClipboardCheck },
+  { id: 1, title: "Customer", icon: User },
+  { id: 2, title: "Kendaraan", icon: Car },
+  { id: 3, title: "Layanan", icon: Wrench },
+  { id: 4, title: "Review", icon: ClipboardCheck },
 ];
 
 export default function CreateWorkOrderPage() {
@@ -53,45 +63,116 @@ export default function CreateWorkOrderPage() {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
-  // Data
+  // Lists
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+
+  // Search Queries
+  const [customerSearch, setCustomerSearch] = useState("");
   const [vehicleSearch, setVehicleSearch] = useState("");
 
-  // Form
+  // Stepper Selection States
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+
+  // Form States
   const [serviceType, setServiceType] = useState<"SERVIS" | "CUCI">("SERVIS");
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
-  const [manualServices, setManualServices] = useState([{ id: Date.now().toString(), name: "", price: "" }]);
+  const [manualServices, setManualServices] = useState([
+    { id: Date.now().toString(), name: "", price: "" },
+  ]);
   const [notes, setNotes] = useState("");
-  const [vehicleHistory, setVehicleHistory] = useState<{ id: string, name: string, price: number, date: string }[]>([]);
+  const [vehicleHistory, setVehicleHistory] = useState<
+    { id: string; name: string; price: number; date: string }[]
+  >([]);
 
-  // New customer inline form
-  const [showNewCustomer, setShowNewCustomer] = useState(false);
+  // Inline forms toggles and states
+  const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
-    phone: "", plateNumber: "", brand: "", model: "",
+    phone: "",
+    name: "",
+    email: "",
   });
   const [creatingCustomer, setCreatingCustomer] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/vehicles?search=" + encodeURIComponent(vehicleSearch))
-      .then((r) => r.json())
-      .then(setVehicles);
-  }, [vehicleSearch]);
+  const [showNewVehicleForm, setShowNewVehicleForm] = useState(false);
+  const [newVehicle, setNewVehicle] = useState({
+    plateNumber: "",
+    brand: "",
+    model: "",
+    type: "",
+    color: "",
+  });
+  const [creatingVehicle, setCreatingVehicle] = useState(false);
 
+  // Fetch initial data
+  const fetchCustomers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/customers");
+      if (res.ok) {
+        const data = await res.json();
+        setCustomers(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const fetchVehicles = useCallback(async () => {
+    try {
+      const res = await fetch("/api/vehicles");
+      if (res.ok) {
+        const data = await res.json();
+        setVehicles(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const fetchServices = useCallback(async () => {
+    try {
+      const res = await fetch("/api/services?category=CUCI");
+      if (res.ok) {
+        const data = await res.json();
+        setServices(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCustomers();
+    fetchVehicles();
+    fetchServices();
+  }, [fetchCustomers, fetchVehicles, fetchServices]);
+
+  // Fetch history when vehicle changes
   useEffect(() => {
     if (selectedVehicle) {
       fetch(`/api/vehicles/${selectedVehicle.id}/history`)
-        .then(r => r.json())
-        .then(data => {
-          const past: { id: string, name: string, price: number, date: string }[] = [];
+        .then((r) => r.json())
+        .then((data) => {
+          const past: { id: string; name: string; price: number; date: string }[] = [];
           data.forEach((wo: any) => {
             if (wo.status === "SELESAI" && wo.completedAt) {
               wo.services.forEach((s: any) => {
-                past.push({ id: Math.random().toString(), name: s.service.name, price: Number(s.price), date: wo.completedAt });
+                past.push({
+                  id: Math.random().toString(),
+                  name: s.service.name,
+                  price: Number(s.price),
+                  date: wo.completedAt,
+                });
               });
               wo.historyItems.forEach((h: any) => {
-                past.push({ id: Math.random().toString(), name: h.title, price: Number(h.price), date: wo.completedAt });
+                past.push({
+                  id: Math.random().toString(),
+                  name: h.title,
+                  price: Number(h.price),
+                  date: wo.completedAt,
+                });
               });
             }
           });
@@ -103,54 +184,78 @@ export default function CreateWorkOrderPage() {
     }
   }, [selectedVehicle]);
 
-  useEffect(() => {
-    fetch("/api/services?category=CUCI")
-      .then((r) => r.json())
-      .then(setServices);
-  }, []);
-
-
-  const selectedServices = services.filter((s) =>
-    selectedServiceIds.includes(s.id)
-  );
-  
-  const totalCost = serviceType === "CUCI"
-    ? selectedServices.reduce((sum, s) => sum + Number(s.price), 0)
-    : manualServices.reduce((sum, ms) => sum + (parseInt(ms.price.replace(/\D/g, "")) || 0), 0) + selectedServices.reduce((sum, s) => sum + Number(s.price), 0);
+  // Calculate totals
+  const selectedServices = services.filter((s) => selectedServiceIds.includes(s.id));
+  const totalCost =
+    serviceType === "CUCI"
+      ? selectedServices.reduce((sum, s) => sum + Number(s.price), 0)
+      : manualServices.reduce((sum, ms) => sum + (parseInt(ms.price.replace(/\D/g, "")) || 0), 0) +
+        selectedServices.reduce((sum, s) => sum + Number(s.price), 0);
 
   const toggleService = (id: string) => {
-    setSelectedServiceIds((prev) =>
-      prev.includes(id) ? [] : [id]
-    );
+    setSelectedServiceIds((prev) => (prev.includes(id) ? [] : [id]));
   };
 
-  const handleCreateCustomer = async () => {
+  // Create new customer
+  const handleCreateCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustomer.phone) return;
     setCreatingCustomer(true);
-    const res = await fetch("/api/customers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        phone: newCustomer.phone,
-        vehicle: {
-          plateNumber: newCustomer.plateNumber,
-          brand: newCustomer.brand,
-          model: newCustomer.model,
-        },
-      }),
-    });
-    if (res.ok) {
-      const customer = await res.json();
-      const vRes = await fetch("/api/vehicles");
-      const vData = await vRes.json();
-      setVehicles(vData);
-      const newVehicle = vData.find(
-        (v: Vehicle) => v.customer.id === customer.id
-      );
-      if (newVehicle) setSelectedVehicle(newVehicle);
-      setShowNewCustomer(false);
-      setNewCustomer({ phone: "", plateNumber: "", brand: "", model: "" });
+    try {
+      const res = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: newCustomer.phone,
+          email: newCustomer.email || null,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        await fetchCustomers();
+        setSelectedCustomer(data);
+        setShowNewCustomerForm(false);
+        setNewCustomer({ phone: "", name: "", email: "" });
+        setStep(2); // Auto advance to vehicle step
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCreatingCustomer(false);
     }
-    setCreatingCustomer(false);
+  };
+
+  // Create new vehicle
+  const handleCreateVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomer || !newVehicle.plateNumber) return;
+    setCreatingVehicle(true);
+    try {
+      const res = await fetch("/api/vehicles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: selectedCustomer.id,
+          plateNumber: newVehicle.plateNumber,
+          brand: newVehicle.brand || null,
+          model: newVehicle.model || null,
+          type: newVehicle.type || null,
+          color: newVehicle.color || null,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        await fetchVehicles();
+        setSelectedVehicle(data);
+        setShowNewVehicleForm(false);
+        setNewVehicle({ plateNumber: "", brand: "", model: "", type: "", color: "" });
+        setStep(3); // Auto advance to services step
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCreatingVehicle(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -163,11 +268,16 @@ export default function CreateWorkOrderPage() {
           vehicleId: selectedVehicle?.id,
           serviceType,
           serviceIds: selectedServiceIds,
-          manualServices: manualServices.map(ms => ({ name: ms.name, price: parseInt(ms.price.replace(/\D/g, "")) || 0 })),
+          manualServices: manualServices
+            .filter((ms) => ms.name.trim() !== "")
+            .map((ms) => ({
+              name: ms.name,
+              price: parseInt(ms.price.replace(/\D/g, "")) || 0,
+            })),
           notes: notes || null,
         }),
       });
-      
+
       if (res.ok) {
         const wo = await res.json();
         router.push(`/work-orders/${wo.id}`);
@@ -183,63 +293,66 @@ export default function CreateWorkOrderPage() {
     }
   };
 
+  // Filtering lists in memory
+  const filteredCustomers = customers.filter(
+    (c) =>
+      c.phone.includes(customerSearch) ||
+      (c.name && c.name.toLowerCase().includes(customerSearch.toLowerCase()))
+  );
+
+  const filteredVehicles = selectedCustomer
+    ? vehicles.filter((v) => v.customer.id === selectedCustomer.id)
+    : vehicles;
+
   const canNext =
-    (step === 1 && selectedVehicle) ||
-    (step === 2 && serviceType === "CUCI" && selectedServiceIds.length > 0) ||
-    (step === 2 && serviceType === "SERVIS" && manualServices.some(ms => ms.name.trim() !== "")) ||
-    step === 3; // Konfirmasi is always valid
+    (step === 1 && selectedCustomer) ||
+    (step === 2 && selectedVehicle) ||
+    (step === 3 && serviceType === "CUCI" && selectedServiceIds.length > 0) ||
+    (step === 3 && serviceType === "SERVIS" && (manualServices.some((ms) => ms.name.trim() !== "") || selectedServiceIds.length > 0)) ||
+    step === 4;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <AppPage>
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => router.back()}
-          className="rounded-xl p-2 text-muted-foreground hover:bg-accent"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <div>
-          <h1 className="text-xl font-bold text-foreground sm:text-2xl">Buat Work Order</h1>
-          <p className="text-sm text-muted-foreground">
-            Ikuti langkah-langkah di bawah
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Buat Work Order Baru"
+        description="Pendaftaran antrean jasa servis dan cuci kendaraan baru"
+        backUrl="/work-orders"
+      />
 
-      {/* Step Indicator */}
-      <div className="rounded-2xl border border-border bg-card p-4">
-        {/* Desktop stepper */}
-        <div className="hidden items-center justify-between sm:flex">
-          {steps.map((s, i) => (
+      {/* Stepper Steps */}
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        {/* Desktop Stepper */}
+        <div className="hidden sm:flex items-center justify-between">
+          {steps.map((s, idx) => (
             <div key={s.id} className="flex flex-1 items-center">
               <div className="flex flex-col items-center gap-1.5">
                 <div
                   className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-all",
+                    "flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold transition-all",
                     step > s.id
-                      ? "bg-success text-success-foreground"
+                      ? "bg-emerald-600 text-white"
                       : step === s.id
                       ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
                       : "bg-muted text-muted-foreground"
                   )}
                 >
-                  {step > s.id ? <Check className="h-4 w-4" /> : s.id}
+                  {step > s.id ? <Check className="h-4.5 w-4.5" /> : s.id}
                 </div>
                 <span
                   className={cn(
-                    "text-xs font-medium",
+                    "text-xs font-bold tracking-wide",
                     step >= s.id ? "text-foreground" : "text-muted-foreground"
                   )}
                 >
                   {s.title}
                 </span>
               </div>
-              {i < steps.length - 1 && (
+              {idx < steps.length - 1 && (
                 <div
                   className={cn(
-                    "mx-3 h-0.5 flex-1 rounded-full",
-                    step > s.id ? "bg-success" : "bg-border"
+                    "mx-4 h-0.5 flex-1 rounded-full",
+                    step > s.id ? "bg-emerald-600" : "bg-border"
                   )}
                 />
               )}
@@ -247,130 +360,257 @@ export default function CreateWorkOrderPage() {
           ))}
         </div>
 
-        {/* Mobile progress bar */}
-        <div className="sm:hidden">
-          <div className="mb-2 flex items-center justify-between text-xs">
-            <span className="font-medium text-foreground">
-              Step {step}: {steps[step - 1].title}
+        {/* Mobile Stepper Progress */}
+        <div className="sm:hidden space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold text-foreground">
+            <span>
+              Langkah {step}: {steps[step - 1].title}
             </span>
-            <span className="text-muted-foreground">{step}/3</span>
+            <span className="text-muted-foreground">{step} / 4</span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-muted">
+          <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
             <div
-              className="h-full rounded-full bg-primary transition-all duration-300"
-              style={{ width: `${(step / 3) * 100}%` }}
+              className="h-full bg-primary transition-all duration-300 rounded-full"
+              style={{ width: `${(step / 4) * 100}%` }}
             />
           </div>
         </div>
       </div>
 
-      {/* Step Content */}
-      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
-        {/* Step 1: Select Vehicle */}
+      {/* Stepper Content */}
+      <PageSection>
+        {/* STEP 1: CUSTOMER */}
         {step === 1 && (
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-lg font-semibold text-foreground">
-                Pilih Kendaraan
-              </h2>
+          <div className="space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <h2 className="text-base font-bold text-foreground">1. Pilih / Daftarkan Kontak</h2>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowNewCustomer(!showNewCustomer)}
+                onClick={() => setShowNewCustomerForm(!showNewCustomerForm)}
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-4 w-4 mr-1" />
                 Customer Baru
               </Button>
             </div>
 
-            {showNewCustomer && (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-foreground">Daftar Customer Baru</h3>
-                <div className="grid gap-3 sm:grid-cols-1">
-                  <Input label="No. HP" value={newCustomer.phone} onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })} required />
-                </div>
-                <Input label="Plat Nomor" maxLength={9} value={newCustomer.plateNumber} onChange={(e) => setNewCustomer({ ...newCustomer, plateNumber: e.target.value.toUpperCase().replace(/\s+/g, "") })} required />
+            {showNewCustomerForm && (
+              <form onSubmit={handleCreateCustomer} className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-4">
+                <h3 className="text-xs font-bold text-primary uppercase tracking-wider">Registrasi Kontak Customer</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Input label="Merek" value={newCustomer.brand} onChange={(e) => setNewCustomer({ ...newCustomer, brand: e.target.value.toUpperCase() })} />
-                  <Input label="Model" value={newCustomer.model} onChange={(e) => setNewCustomer({ ...newCustomer, model: e.target.value.toUpperCase() })} />
+                  <Input
+                    label="Nomor HP (WhatsApp)"
+                    placeholder="08xxxxxxxxxx"
+                    value={newCustomer.phone}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                    required
+                  />
+                  <Input
+                    label="Email (Opsional)"
+                    placeholder="email@contoh.com"
+                    type="email"
+                    value={newCustomer.email}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
+                  />
                 </div>
-                <Button size="sm" loading={creatingCustomer} onClick={handleCreateCustomer}>
-                  Simpan & Pilih
-                </Button>
-              </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    type="button"
+                    size="sm"
+                    onClick={() => setShowNewCustomerForm(false)}
+                  >
+                    Batal
+                  </Button>
+                  <Button type="submit" size="sm" loading={creatingCustomer}>
+                    Simpan & Pilih
+                  </Button>
+                </div>
+              </form>
             )}
 
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Cari plat nomor atau merk..."
-                value={vehicleSearch}
-                onChange={(e) => setVehicleSearch(e.target.value)}
-                className="h-11 w-full rounded-xl border border-input bg-background pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
+            <FilterBar
+              searchVal={customerSearch}
+              onSearchChange={setCustomerSearch}
+              searchPlaceholder="Cari kontak customer..."
+            />
 
-            <div className="max-h-[350px] space-y-2 overflow-y-auto">
-              {vehicles.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => setSelectedVehicle(v)}
-                  className={cn(
-                    "w-full rounded-xl border p-4 text-left transition-all",
-                    selectedVehicle?.id === v.id
-                      ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                      : "border-border hover:border-primary/30 hover:bg-accent/50"
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="rounded-lg bg-muted px-2 py-0.5 font-mono text-sm font-bold text-foreground">
-                        {v.plateNumber}
-                      </span>
-                      <span className="ml-3 text-sm text-muted-foreground">
-                        {[v.brand, v.model].filter(Boolean).join(" ")}
-                      </span>
-                    </div>
-                    {selectedVehicle?.id === v.id && (
-                      <Check className="h-5 w-5 text-primary" />
+            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+              {filteredCustomers.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-8">Customer tidak ditemukan.</p>
+              ) : (
+                filteredCustomers.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      setSelectedCustomer(c);
+                      setSelectedVehicle(null); // Reset vehicle on customer change
+                    }}
+                    className={cn(
+                      "w-full rounded-xl border p-4 text-left transition-all flex items-center justify-between cursor-pointer",
+                      selectedCustomer?.id === c.id
+                        ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                        : "border-border hover:border-primary/30 hover:bg-slate-500/5"
                     )}
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {v.brand || "-"} {v.model || "-"} — {v.customer.phone}
-                  </p>
-                </button>
-              ))}
+                  >
+                    <div>
+                      <p className="text-sm font-bold text-foreground">{c.phone}</p>
+                      {c.email && <p className="text-xs text-muted-foreground">{c.email}</p>}
+                    </div>
+                    {selectedCustomer?.id === c.id && <Check className="h-5 w-5 text-primary shrink-0" />}
+                  </button>
+                ))
+              )}
             </div>
           </div>
         )}
 
-        {/* Step 2: Select Services */}
+        {/* STEP 2: VEHICLE */}
         {step === 2 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">
-              Pilih Layanan
-            </h2>
+          <div className="space-y-5">
+            <div className="flex items-center justify-between border-b border-border/50 pb-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Customer Terpilih</p>
+                <p className="text-sm font-bold text-foreground">{selectedCustomer?.phone}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setStep(1)}>
+                Ubah Customer
+              </Button>
+            </div>
 
-            {/* Service Type Toggle */}
-            <div className="flex rounded-xl border border-border p-1">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <h2 className="text-base font-bold text-foreground">2. Pilih / Daftarkan Kendaraan</h2>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowNewVehicleForm(!showNewVehicleForm)}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Kendaraan Baru
+              </Button>
+            </div>
+
+            {showNewVehicleForm && (
+              <form onSubmit={handleCreateVehicle} className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-4">
+                <h3 className="text-xs font-bold text-primary uppercase tracking-wider">Registrasi Kendaraan Baru</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    label="Plat Nomor"
+                    placeholder="B 1234 ABC"
+                    value={newVehicle.plateNumber}
+                    onChange={(e) =>
+                      setNewVehicle({
+                        ...newVehicle,
+                        plateNumber: e.target.value.toUpperCase().replace(/\s+/g, ""),
+                      })
+                    }
+                    required
+                  />
+                  <Input
+                    label="Merek"
+                    placeholder="Toyota"
+                    value={newVehicle.brand}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, brand: e.target.value })}
+                  />
+                  <Input
+                    label="Model"
+                    placeholder="Avanza"
+                    value={newVehicle.model}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, model: e.target.value })}
+                  />
+                  <Input
+                    label="Tipe (MPV, Sedan, etc.)"
+                    placeholder="MPV"
+                    value={newVehicle.type}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, type: e.target.value })}
+                  />
+                  <Input
+                    label="Warna"
+                    placeholder="Hitam"
+                    value={newVehicle.color}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, color: e.target.value })}
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    type="button"
+                    size="sm"
+                    onClick={() => setShowNewVehicleForm(false)}
+                  >
+                    Batal
+                  </Button>
+                  <Button type="submit" size="sm" loading={creatingVehicle}>
+                    Simpan & Pilih
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+              {filteredVehicles.length === 0 ? (
+                <div className="py-12 border-2 border-dashed border-border rounded-xl text-center">
+                  <p className="text-xs text-muted-foreground mb-3">Belum ada kendaraan terdaftar untuk customer ini.</p>
+                  <Button size="sm" onClick={() => setShowNewVehicleForm(true)}>
+                    Daftarkan Kendaraan Baru
+                  </Button>
+                </div>
+              ) : (
+                filteredVehicles.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => setSelectedVehicle(v)}
+                    className={cn(
+                      "w-full rounded-xl border p-4 text-left transition-all flex items-center justify-between cursor-pointer",
+                      selectedVehicle?.id === v.id
+                        ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                        : "border-border hover:border-primary/30 hover:bg-slate-500/5"
+                    )}
+                  >
+                    <div>
+                      <span className="rounded-lg bg-muted px-2.5 py-1 font-mono text-sm font-bold text-foreground">
+                        {v.plateNumber}
+                      </span>
+                      <p className="mt-2 text-xs text-muted-foreground font-semibold">
+                        {[v.brand, v.model].filter(Boolean).join(" ") || "Tanpa Merek"}
+                        {v.color && ` — Warna ${v.color}`}
+                        {v.type && ` (${v.type})`}
+                      </p>
+                    </div>
+                    {selectedVehicle?.id === v.id && <Check className="h-5 w-5 text-primary shrink-0" />}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: SERVICES */}
+        {step === 3 && (
+          <div className="space-y-5">
+            <h2 className="text-base font-bold text-foreground">3. Pilih Layanan Jasa & Cuci</h2>
+
+            {/* Toggle Category */}
+            <div className="flex rounded-xl border border-border p-1 bg-muted/20">
               <button
+                type="button"
                 onClick={() => setServiceType("SERVIS")}
                 className={cn(
-                  "flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all",
+                  "flex-1 rounded-lg py-2.5 text-sm font-bold transition-all cursor-pointer",
                   serviceType === "SERVIS"
-                    ? "bg-primary text-primary-foreground shadow-sm"
+                    ? "bg-card text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 Servis Bengkel
               </button>
               <button
+                type="button"
                 onClick={() => setServiceType("CUCI")}
                 className={cn(
-                  "flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all",
+                  "flex-1 rounded-lg py-2.5 text-sm font-bold transition-all cursor-pointer",
                   serviceType === "CUCI"
-                    ? "bg-primary text-primary-foreground shadow-sm"
+                    ? "bg-card text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -379,43 +619,42 @@ export default function CreateWorkOrderPage() {
             </div>
 
             {serviceType === "CUCI" ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {services.map((s) => (
                   <button
                     key={s.id}
+                    type="button"
                     onClick={() => toggleService(s.id)}
                     className={cn(
-                      "w-full rounded-xl border p-4 text-left transition-all",
+                      "w-full rounded-xl border p-4 text-left transition-all flex items-center justify-between cursor-pointer",
                       selectedServiceIds.includes(s.id)
                         ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                        : "border-border hover:border-primary/30 hover:bg-accent/50"
+                        : "border-border hover:border-primary/30 hover:bg-slate-500/5"
                     )}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-foreground">
-                        {s.name}
+                    <span className="text-sm font-bold text-foreground">{s.name}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-extrabold text-foreground">
+                        {formatCurrency(s.price)}
                       </span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-semibold text-foreground">
-                          {formatCurrency(s.price)}
-                        </span>
-                        {selectedServiceIds.includes(s.id) && (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                            <Check className="h-3 w-3 text-primary-foreground" />
-                          </div>
-                        )}
-                      </div>
+                      {selectedServiceIds.includes(s.id) && (
+                        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white">
+                          <Check className="h-3.5 w-3.5" />
+                        </div>
+                      )}
                     </div>
                   </button>
                 ))}
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {/* Manual lines for Servis */}
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Baris Jasa Bengkel</h3>
                 {manualServices.map((ms, index) => (
-                  <div key={ms.id} className="flex items-center gap-3">
+                  <div key={ms.id} className="flex items-center gap-2">
                     <div className="flex-1">
-                      <Input 
-                        placeholder="Contoh: Ganti Kampas Rem" 
+                      <Input
+                        placeholder="Nama Jasa (misal: Ganti Kampas Rem)"
                         value={ms.name}
                         onChange={(e) => {
                           const newMs = [...manualServices];
@@ -424,73 +663,74 @@ export default function CreateWorkOrderPage() {
                         }}
                       />
                     </div>
-                    <div className="w-1/3">
-                      <Input 
-                        placeholder="Rp 0" 
+                    <div className="w-36">
+                      <Input
+                        placeholder="Biaya Jasa (Rp)"
                         value={ms.price}
                         onChange={(e) => {
                           const newMs = [...manualServices];
-                          // Simple number format logic for manual UI
                           let raw = e.target.value.replace(/\D/g, "");
-                          if (raw) {
-                            newMs[index].price = new Intl.NumberFormat("id-ID").format(parseInt(raw));
-                          } else {
-                            newMs[index].price = "";
-                          }
+                          newMs[index].price = raw
+                            ? new Intl.NumberFormat("id-ID").format(parseInt(raw))
+                            : "";
                           setManualServices(newMs);
                         }}
                       />
                     </div>
                     {manualServices.length > 1 && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="h-10 w-10 p-0 flex justify-center items-center shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      <Button
+                        variant="outline"
+                        type="button"
+                        className="h-11 w-11 p-0 shrink-0 text-destructive border-border/80 hover:bg-destructive/10 hover:border-destructive/30"
                         onClick={() => {
-                          setManualServices(manualServices.filter(item => item.id !== ms.id));
+                          setManualServices(manualServices.filter((item) => item.id !== ms.id));
                         }}
                       >
-                        <Wrench className="h-4 w-4" style={{ transform: "rotate(45deg)" }} /> {/* acts like an X if we don't import Trash/X */}
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     )}
                   </div>
                 ))}
-                <Button 
-                  variant="outline" 
-                  onClick={() => setManualServices([...manualServices, { id: Date.now().toString(), name: "", price: "" }])}
-                  className="w-full mt-2"
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() =>
+                    setManualServices([
+                      ...manualServices,
+                      { id: Date.now().toString(), name: "", price: "" },
+                    ])
+                  }
+                  className="w-full border-dashed"
                 >
-                  <Plus className="mr-2 h-4 w-4" /> Tambah Baris Jasa
+                  <Plus className="mr-1.5 h-4 w-4" /> Tambah Jasa Bengkel
                 </Button>
 
-                <div className="pt-6 border-t border-border mt-6">
-                  <h3 className="text-sm font-semibold text-foreground mb-3">Layanan Cuci Tambahan (Opsional)</h3>
+                {/* Additional Wash category (Optional) */}
+                <div className="pt-5 border-t border-border mt-6">
+                  <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Layanan Cuci Tambahan (Opsional)</h3>
                   <div className="space-y-2">
                     {services.map((s) => (
                       <button
                         key={s.id}
+                        type="button"
                         onClick={() => toggleService(s.id)}
                         className={cn(
-                          "w-full rounded-xl border p-4 text-left transition-all",
+                          "w-full rounded-xl border p-4 text-left transition-all flex items-center justify-between cursor-pointer",
                           selectedServiceIds.includes(s.id)
                             ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                            : "border-border hover:border-primary/30 hover:bg-accent/50"
+                            : "border-border hover:border-primary/30 hover:bg-slate-500/5"
                         )}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-foreground">
-                            {s.name}
+                        <span className="text-sm font-bold text-foreground">{s.name}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-extrabold text-foreground">
+                            {formatCurrency(s.price)}
                           </span>
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-semibold text-foreground">
-                              {formatCurrency(s.price)}
-                            </span>
-                            {selectedServiceIds.includes(s.id) && (
-                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                                <Check className="h-3 w-3 text-primary-foreground" />
-                              </div>
-                            )}
-                          </div>
+                          {selectedServiceIds.includes(s.id) && (
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white">
+                              <Check className="h-3.5 w-3.5" />
+                            </div>
+                          )}
                         </div>
                       </button>
                     ))}
@@ -499,193 +739,180 @@ export default function CreateWorkOrderPage() {
               </div>
             )}
 
-            {(serviceType === "CUCI" ? selectedServiceIds.length > 0 : (manualServices.some(m => m.name.trim() !== "") || selectedServiceIds.length > 0)) && (
-              <div className="rounded-xl bg-muted/50 p-4 mt-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    {serviceType === "CUCI" ? `${selectedServiceIds.length} layanan dipilih` : "Total Biaya Jasa & Cuci"}
-                  </span>
-                  <span className="text-lg font-bold text-foreground">
-                    {formatCurrency(totalCost)}
-                  </span>
-                </div>
+            {/* Sum Indicator */}
+            {totalCost > 0 && (
+              <div className="rounded-2xl bg-muted/40 border border-border/50 p-4 flex items-center justify-between mt-4">
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subtotal Biaya</span>
+                <span className="text-lg font-black text-primary">{formatCurrency(totalCost)}</span>
               </div>
             )}
 
+            {/* Past History */}
             {serviceType === "SERVIS" && vehicleHistory.length > 0 && (
-              <div className="mt-6 rounded-xl border border-primary/20 bg-primary/5 p-4">
-                <h3 className="mb-3 text-sm font-semibold text-primary">Histori Servis Sebelumnya</h3>
-                <div className="space-y-2">
+              <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+                <h3 className="text-xs font-bold text-primary uppercase tracking-wider">Histori Servis Sebelumnya</h3>
+                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
                   {vehicleHistory.map((h) => (
-                     <div key={h.id} className="flex items-center justify-between rounded-lg bg-background p-3 text-sm border border-border">
-                       <div>
-                         <p className="font-medium text-foreground">{h.name}</p>
-                         <p className="text-xs text-muted-foreground">{new Date(h.date).toLocaleDateString("id-ID")}</p>
-                       </div>
-                       <div className="text-right flex items-center gap-3">
-                         <p className="font-semibold">{formatCurrency(h.price)}</p>
-                         <Button 
-                            variant="secondary" 
-                            size="sm" 
-                            className="h-7 text-xs" 
-                            onClick={() => {
-                               const newMs = [...manualServices];
-                               if (newMs.length === 1 && !newMs[0].name) {
-                                 newMs[0] = { id: Date.now().toString(), name: h.name, price: new Intl.NumberFormat("id-ID").format(h.price) };
-                               } else {
-                                 newMs.push({ id: Date.now().toString(), name: h.name, price: new Intl.NumberFormat("id-ID").format(h.price) });
-                               }
-                               setManualServices(newMs);
-                            }}
-                         >
-                           Gunakan Lagi
-                         </Button>
-                       </div>
-                     </div>
+                    <div
+                      key={h.id}
+                      className="flex items-center justify-between rounded-xl bg-card border border-border/80 p-3 text-sm"
+                    >
+                      <div>
+                        <p className="font-semibold text-foreground">{h.name}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Selesai: {new Date(h.date).toLocaleDateString("id-ID")}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-foreground">{formatCurrency(h.price)}</span>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="h-8 text-xs font-bold"
+                          onClick={() => {
+                            const newMs = [...manualServices];
+                            if (newMs.length === 1 && !newMs[0].name) {
+                              newMs[0] = {
+                                id: Date.now().toString(),
+                                name: h.name,
+                                price: new Intl.NumberFormat("id-ID").format(h.price),
+                              };
+                            } else {
+                              newMs.push({
+                                id: Date.now().toString(),
+                                name: h.name,
+                                price: new Intl.NumberFormat("id-ID").format(h.price),
+                              });
+                            }
+                            setManualServices(newMs);
+                          }}
+                        >
+                          Gunakan Lagi
+                        </Button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
             )}
           </div>
         )}
-        {/* Step 3: Confirmation */}
-        {step === 3 && (
-          <div className="space-y-5">
-            <h2 className="text-lg font-semibold text-foreground">
-              Konfirmasi Work Order
-            </h2>
 
-            <div className="space-y-4 rounded-xl border border-border p-5">
+        {/* STEP 4: REVIEW */}
+        {step === 4 && (
+          <div className="space-y-5">
+            <h2 className="text-base font-bold text-foreground">4. Review Akhir & Konfirmasi</h2>
+
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-4 shadow-inner">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Customer
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Data Customer</p>
+                  <p className="mt-1 text-sm font-bold text-foreground">
+                    {selectedCustomer?.name || "Customer Bengkel"}
                   </p>
-                  <div className="font-medium text-foreground">
-                  {selectedVehicle?.brand || "-"} {selectedVehicle?.model || "-"}
-                </div>
-                <div className="text-muted-foreground">
-                  {selectedVehicle?.customer.phone}
-                </div>
+                  <p className="text-xs text-muted-foreground">{selectedCustomer?.phone}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Kendaraan
-                  </p>
-                  <p className="mt-1 text-sm font-medium text-foreground">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Data Kendaraan</p>
+                  <p className="mt-1 text-sm font-extrabold text-primary font-mono">
                     {selectedVehicle?.plateNumber}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {[selectedVehicle?.brand, selectedVehicle?.model]
-                      .filter(Boolean)
-                      .join(" ")}
+                    {[selectedVehicle?.brand, selectedVehicle?.model].filter(Boolean).join(" — ")}
                   </p>
                 </div>
               </div>
 
-              <hr className="border-border" />
+              <hr className="border-border/60" />
 
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Tipe Layanan
-                </p>
-                <p className="mt-1 text-sm font-medium text-foreground">
-                  {serviceType === "SERVIS" ? "Servis Bengkel" : "Cuci Kendaraan"}
-                </p>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Kategori Pengerjaan</p>
+                <div className="mt-1">
+                  <StatusBadge type="category" status={serviceType} showDot={false} />
+                </div>
               </div>
 
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Layanan Dipilih
-                </p>
-                <div className="mt-2 space-y-1">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Item Layanan Jasa</p>
+                <div className="mt-2 space-y-2">
                   {serviceType === "CUCI" ? (
                     selectedServices.map((s) => (
-                      <div
-                        key={s.id}
-                        className="flex items-center justify-between text-sm"
-                      >
-                        <span className="text-foreground">{s.name}</span>
-                        <span className="font-medium text-foreground">
-                          {formatCurrency(s.price)}
-                        </span>
+                      <div key={s.id} className="flex justify-between text-sm text-foreground/90">
+                        <span>{s.name}</span>
+                        <span className="font-semibold">{formatCurrency(s.price)}</span>
                       </div>
                     ))
                   ) : (
                     <>
-                      {manualServices.filter(m => m.name.trim() !== "").map((ms) => (
-                        <div
-                          key={ms.id}
-                          className="flex items-center justify-between text-sm"
-                        >
-                          <span className="text-foreground">{ms.name}</span>
-                          <span className="font-medium text-foreground">
-                            {formatCurrency(parseInt(ms.price.replace(/\D/g, "")) || 0)}
-                          </span>
-                        </div>
-                      ))}
+                      {manualServices
+                        .filter((m) => m.name.trim() !== "")
+                        .map((ms) => (
+                          <div key={ms.id} className="flex justify-between text-sm text-foreground/90">
+                            <span>{ms.name}</span>
+                            <span className="font-semibold">
+                              {formatCurrency(parseInt(ms.price.replace(/\D/g, "")) || 0)}
+                            </span>
+                          </div>
+                        ))}
                       {selectedServices.map((s) => (
-                        <div
-                          key={s.id}
-                          className="flex items-center justify-between text-sm"
-                        >
-                          <span className="text-foreground">{s.name} <span className="text-xs text-muted-foreground">(Cuci Tambahan)</span></span>
-                          <span className="font-medium text-foreground">
-                            {formatCurrency(s.price)}
+                        <div key={s.id} className="flex justify-between text-sm text-foreground/90">
+                          <span>
+                            {s.name} <span className="text-xs text-muted-foreground">(Cuci Tambahan)</span>
                           </span>
+                          <span className="font-semibold">{formatCurrency(s.price)}</span>
                         </div>
                       ))}
                     </>
                   )}
-                  <hr className="border-border" />
-                  <div className="flex items-center justify-between text-sm font-bold">
-                    <span className="text-foreground">Total</span>
-                    <span className="text-lg text-primary">
-                      {formatCurrency(totalCost)}
-                    </span>
+                  <hr className="border-border/50 my-2" />
+                  <div className="flex justify-between items-center text-sm font-extrabold pt-1">
+                    <span className="text-foreground">Total Tagihan Jasa</span>
+                    <span className="text-xl font-black text-primary">{formatCurrency(totalCost)}</span>
                   </div>
                 </div>
               </div>
 
-              {notes && (
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Catatan
-                  </p>
-                  <p className="mt-1 text-sm text-foreground">{notes}</p>
-                </div>
-              )}
+              <hr className="border-border/60" />
+
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 block">
+                  Catatan Tambahan (Keluhan/Instruksi)
+                </label>
+                <Textarea
+                  placeholder="Masukkan instruksi khusus atau keluhan pemilik kendaraan..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="rounded-xl border border-input min-h-[80px]"
+                />
+              </div>
             </div>
           </div>
         )}
-      </div>
+      </PageSection>
 
-      {/* Navigation - Sticky on mobile */}
-      <div className="sticky bottom-0 -mx-4 flex items-center justify-between bg-background px-4 py-4 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:py-0">
+      {/* Navigation Actions */}
+      <div className="flex items-center justify-between border-t border-border/60 pt-4">
         <Button
           variant="outline"
           onClick={() => (step === 1 ? router.back() : setStep(step - 1))}
+          disabled={saving}
         >
-          <ArrowLeft className="h-4 w-4" />
-          <span className="hidden sm:inline">{step === 1 ? "Batal" : "Sebelumnya"}</span>
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          {step === 1 ? "Batal" : "Sebelumnya"}
         </Button>
 
-        {step < 3 ? (
-          <Button
-            onClick={() => setStep(step + 1)}
-            disabled={!canNext}
-          >
-            <span className="hidden sm:inline">Selanjutnya</span>
-            <span className="sm:hidden">Lanjut</span>
-            <ArrowRight className="h-4 w-4" />
+        {step < 4 ? (
+          <Button onClick={() => setStep(step + 1)} disabled={!canNext}>
+            Lanjut
+            <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
         ) : (
-          <Button onClick={handleSubmit} loading={saving}>
-            <Check className="h-4 w-4" />
+          <Button onClick={handleSubmit} loading={saving} disabled={saving}>
+            <Check className="h-4 w-4 mr-1" />
             Buat Work Order
           </Button>
         )}
       </div>
-    </div>
+    </AppPage>
   );
 }

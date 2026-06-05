@@ -1,10 +1,12 @@
 import { LucideIcon, Inbox } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface EmptyStateProps {
   icon?: LucideIcon;
   title: string;
   description?: string;
   action?: React.ReactNode;
+  className?: string;
 }
 
 export function EmptyState({
@@ -12,19 +14,33 @@ export function EmptyState({
   title,
   description,
   action,
+  className,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 px-6 py-20">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
-        <Icon className="h-8 w-8 text-muted-foreground" />
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center rounded-3xl border border-dashed border-border/80 bg-card/40 backdrop-blur-sm px-6 py-16 text-center transition-all duration-300 hover:border-primary/30",
+        className
+      )}
+    >
+      {/* Icon Container with Gradient Backdrop */}
+      <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-primary/10 to-primary/5 text-primary border border-primary/15 shadow-inner mb-6">
+        <div className="absolute inset-0 rounded-2xl bg-primary/5 blur-sm" />
+        <Icon className="relative h-7 w-7 text-primary/95 shrink-0" />
       </div>
-      <h3 className="mt-5 text-base font-semibold text-foreground">{title}</h3>
+
+      {/* Typography */}
+      <h3 className="text-lg font-bold text-foreground tracking-tight">
+        {title}
+      </h3>
       {description && (
-        <p className="mt-1.5 max-w-sm text-center text-sm text-muted-foreground">
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground leading-relaxed">
           {description}
         </p>
       )}
-      {action && <div className="mt-5">{action}</div>}
+
+      {/* Action CTA */}
+      {action && <div className="mt-6 flex justify-center">{action}</div>}
     </div>
   );
 }
