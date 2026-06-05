@@ -1,28 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { trackingQuerySchema, parseZodError } from "@/lib/validations";
+import { checkRateLimit } from "@/lib/rate-limit";
+
+// Rate limit config: 10 requests per 60 seconds per IP
+const TRACKING_RATE_LIMIT = { maxRequests: 10, windowSeconds: 60 };
 
 // GET /api/tracking?token=XXXXX&phone=XXXX
 // Public endpoint — no auth required
 export async function GET(req: NextRequest) {
-  const token = req.nextUrl.searchParams.get("token");
-  const phone = req.nextUrl.searchParams.get("phone");
-
-  if (!token || !phone) {
+  // Rate limiting by IP
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || req.headers.get("x-real-ip")
+    || "unknown";
+  const rateResult = checkRateLimit(`tracking:${ip}`, TRACKING_RATE_LIMIT);
+  if (!rateResult.allowed) {
     return NextResponse.json(
-      { error: "Token dan 4 digit terakhir nomor HP wajib diisi" },
-      { status: 400 }
+      { error: "Terlalu banyak percobaan. Coba lagi dalam 1 menit." },
+      { status: 429 }
     );
   }
 
-  if (phone.length !== 4) {
+  const token = req.nextUrl.searchParams.get("token");
+  const phone = req.nextUrl.searchParams.get("phone");
+
+  const parsed = trackingQuerySchema.safeParse({ token, phone });
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Masukkan 4 digit terakhir nomor HP" },
+      { error: parseZodError(parsed.error) },
       { status: 400 }
     );
   }
 
   const workOrder = await prisma.workOrder.findUnique({
-    where: { trackingToken: token.toUpperCase() },
+    where: { trackingToken: parsed.data.token.toUpperCase() },
     include: {
       vehicle: {
         include: { customer: true },
@@ -50,7 +61,7 @@ export async function GET(req: NextRequest) {
 
   // Verify with last 4 digits of phone
   const customerPhone = workOrder.vehicle.customer.phone;
-  if (!customerPhone.endsWith(phone)) {
+  if (!customerPhone.endsWith(parsed.data.phone)) {
     return NextResponse.json(
       { error: "Nomor HP tidak cocok" },
       { status: 403 }
@@ -65,7 +76,9 @@ export async function GET(req: NextRequest) {
     vehiclePlate: workOrder.vehicle.plateNumber,
     vehicleBrand: workOrder.vehicle.brand,
     vehicleModel: workOrder.vehicle.model,
-    customerPhone: workOrder.vehicle.customer.phone,
+    customerPhone: customerPhone.length > 4
+      ? "****" + customerPhone.slice(-4)
+      : customerPhone,
     employeeName: null,
     services: workOrder.services.map((ws) => ({
       name: ws.service.name,

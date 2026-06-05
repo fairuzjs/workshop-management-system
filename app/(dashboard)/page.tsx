@@ -8,12 +8,14 @@ export default async function DashboardPage(props: { searchParams: Promise<{ per
   const period = searchParams.period || "month";
 
   let dateFilter = {};
-  const now = new Date();
   if (period === "today") {
-    const start = new Date(now.setHours(0, 0, 0, 0));
-    const end = new Date(now.setHours(23, 59, 59, 999));
-    dateFilter = { gte: start, lte: end };
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    dateFilter = { gte: todayStart, lte: todayEnd };
   } else if (period === "month") {
+    const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     dateFilter = { gte: start, lte: end };

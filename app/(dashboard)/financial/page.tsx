@@ -66,11 +66,11 @@ export default async function FinancialPage(props: { searchParams: Promise<{ per
         ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {})
       }
     }),
-    isAdmin ? { _sum: { salary: 0 } } : prisma.employee.aggregate({
+    prisma.employee.aggregate({
       _sum: { salary: true },
       where: { isActive: true }
     }),
-    isAdmin ? { _sum: { amount: 0 } } : prisma.employeeEarning.aggregate({
+    prisma.employeeEarning.aggregate({
       _sum: { amount: true },
       where: {
         ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {})

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { createExpenseSchema, parseZodError } from "@/lib/validations";
 
 // GET /api/expenses — List expenses
 export async function GET(req: NextRequest) {
@@ -55,14 +56,12 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { category, amount, description, date } = body;
 
-  if (!category || amount === undefined || amount <= 0) {
-    return NextResponse.json(
-      { error: "Kategori wajib diisi dan jumlah harus lebih dari 0" },
-      { status: 400 }
-    );
+  const parsed = createExpenseSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parseZodError(parsed.error) }, { status: 400 });
   }
+  const { category, amount, description, date } = parsed.data;
 
   const expense = await prisma.expense.create({
     data: {

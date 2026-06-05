@@ -64,6 +64,16 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+
+  // Check if inventory item is used in any work order part
+  const partCount = await prisma.workOrderPart.count({ where: { inventoryId: id } });
+  if (partCount > 0) {
+    return NextResponse.json(
+      { error: "Tidak bisa menghapus item karena masih digunakan di Work Order" },
+      { status: 400 }
+    );
+  }
+
   await prisma.inventory.delete({ where: { id } });
   return NextResponse.json({ success: true });
 }

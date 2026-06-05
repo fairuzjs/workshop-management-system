@@ -92,6 +92,27 @@ export async function PATCH(
     if (status === "PROSES") {
       if (!existing.startedAt) updateData.startedAt = new Date();
     } else if (status === "SELESAI") {
+      // Validasi: semua layanan jasa harus sudah memiliki mekanik yang ditugaskan
+      const servicesWithEmployees = await prisma.workOrderService.findMany({
+        where: { workOrderId: id },
+        include: { employees: { select: { id: true } } },
+      });
+      const historyWithEmployees = await prisma.workOrderHistoryItem.findMany({
+        where: { workOrderId: id },
+        include: { employees: { select: { id: true } } },
+      });
+
+      const allServiceItems = [...servicesWithEmployees, ...historyWithEmployees];
+      if (allServiceItems.length > 0) {
+        const missingEmployee = allServiceItems.some((item) => item.employees.length === 0);
+        if (missingEmployee) {
+          return NextResponse.json(
+            { error: "Semua layanan jasa harus memiliki mekanik yang ditugaskan sebelum bisa diselesaikan" },
+            { status: 400 }
+          );
+        }
+      }
+
       if (!existing.completedAt) updateData.completedAt = new Date();
     }
   }

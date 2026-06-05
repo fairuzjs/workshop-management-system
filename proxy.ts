@@ -1,41 +1,42 @@
+import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 
-// Next.js 16 uses proxy.ts instead of middleware.ts
-// Proxy runs at the edge — cannot use Prisma or heavy Node.js libs here.
-// Auth checks are done in server components / route handlers via lib/auth.ts
+const proxyHandler = auth((req) => {
+  const { pathname } = req.nextUrl;
+  const isLoggedIn = !!req.auth;
 
-export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  // Public routes that don't require authentication
+  const publicRoutes = ["/login", "/tracking"];
+  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
-  // Public routes — always allow
-  const publicPaths = ["/login", "/tracking", "/api/auth", "/api/tracking"];
-  const isPublic = publicPaths.some((path) => pathname.startsWith(path));
+  // Public API routes
+  const publicApiRoutes = ["/api/auth", "/api/tracking"];
+  const isPublicApi = publicApiRoutes.some((route) => pathname.startsWith(route));
 
-  if (isPublic) {
+  // Allow public routes and public APIs
+  if (isPublicRoute || isPublicApi) {
+    // If logged in and trying to access login page, redirect to dashboard
+    if (isLoggedIn && pathname === "/login") {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
     return NextResponse.next();
   }
 
-  // Check for auth session cookie (NextAuth v5 uses authjs.session-token)
-  const sessionToken =
-    request.cookies.get("authjs.session-token")?.value ||
-    request.cookies.get("__Secure-authjs.session-token")?.value;
-
-  if (!sessionToken) {
-    if (pathname.startsWith("/api")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const loginUrl = new URL("/login", request.url);
+  // Redirect unauthenticated users to login
+  if (!isLoggedIn) {
+    const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();
-}
+});
+
+export default proxyHandler;
+export const proxy = proxyHandler;
 
 export const config = {
   matcher: [
-    // Match all paths except static assets
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

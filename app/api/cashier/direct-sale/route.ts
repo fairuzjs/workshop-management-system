@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { generateTrackingToken } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -60,7 +61,20 @@ export async function POST(req: NextRequest) {
   }
 
   let finalTotalCost = 0;
-  const trackingToken = `DS-${Date.now().toString().slice(-6)}`;
+
+  // Generate unique tracking token with DB check
+  let trackingToken = "";
+  for (let i = 0; i < 10; i++) {
+    const candidate = `DS${generateTrackingToken().slice(0, 6)}`;
+    const exists = await prisma.workOrder.findUnique({ where: { trackingToken: candidate } });
+    if (!exists) {
+      trackingToken = candidate;
+      break;
+    }
+  }
+  if (!trackingToken) {
+    return NextResponse.json({ error: "Gagal membuat token unik" }, { status: 500 });
+  }
 
   try {
     const transactionResult = await prisma.$transaction(async (tx) => {
@@ -104,7 +118,10 @@ export async function POST(req: NextRequest) {
           const now = new Date();
           
           let commissionPerPerson = 0;
-          const commRule = commissions.find(c => c.service.name === jasa.name);
+          // Match by serviceId first (reliable), fallback to name
+          const commRule = jasa.serviceId
+            ? commissions.find(c => c.serviceId === jasa.serviceId)
+            : commissions.find(c => c.service.name === jasa.name);
           
           if (commRule) {
             commissionPerPerson = Number(commRule.commissionNominal) / jasa.employeeIds.length;
@@ -133,6 +150,17 @@ export async function POST(req: NextRequest) {
         finalTotalCost += itemTotal;
         
         const employeeConnects = part.employeeIds.map((empId: string) => ({ id: empId }));
+
+        // Validate stock before deducting
+        const currentInventory = await tx.inventory.findUnique({
+          where: { id: part.inventoryId },
+          select: { qty: true, name: true },
+        });
+        if (!currentInventory || currentInventory.qty < part.qty) {
+          throw new Error(
+            `Stok ${currentInventory?.name || 'item'} tidak mencukupi (tersedia: ${currentInventory?.qty ?? 0}, dibutuhkan: ${part.qty})`
+          );
+        }
 
         // Create new part and deduct stock
         await tx.workOrderPart.create({
@@ -201,6 +229,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(transactionResult, { status: 201 });
   } catch (error: any) {
     console.error("Direct Sale Transaction Error:", error);
-    return NextResponse.json({ error: "Gagal memproses transaksi Beli Langsung" }, { status: 500 });
+    const message = error?.message?.startsWith("Stok ")
+      ? error.message
+      : "Gagal memproses transaksi Beli Langsung";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

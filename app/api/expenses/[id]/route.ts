@@ -9,6 +9,9 @@ export async function PUT(
 ) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if ((session.user as any)?.role !== "SUPERADMIN") {
+    return NextResponse.json({ error: "Hanya SUPERADMIN yang dapat mengubah pengeluaran" }, { status: 403 });
+  }
 
   const { id } = await params;
   let body;
@@ -46,6 +49,9 @@ export async function DELETE(
 ) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if ((session.user as any)?.role !== "SUPERADMIN") {
+    return NextResponse.json({ error: "Hanya SUPERADMIN yang dapat menghapus pengeluaran" }, { status: 403 });
+  }
 
   const { id } = await params;
   await prisma.expense.delete({ where: { id } });

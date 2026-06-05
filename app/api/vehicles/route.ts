@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { createVehicleSchema, parseZodError } from "@/lib/validations";
 
 // GET /api/vehicles — List all vehicles with customer info
 export async function GET(req: NextRequest) {
@@ -40,11 +41,21 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { customerId, plateNumber, type, brand, model, color } = body;
 
-  if (!customerId || !plateNumber) {
+  const parsed = createVehicleSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parseZodError(parsed.error) }, { status: 400 });
+  }
+  const { customerId, plateNumber, type, brand, model, color } = parsed.data;
+
+  // Check for duplicate plate number
+  const existing = await prisma.vehicle.findFirst({
+    where: { plateNumber: plateNumber.toUpperCase() },
+    select: { id: true, customer: { select: { name: true } } },
+  });
+  if (existing) {
     return NextResponse.json(
-      { error: "Customer dan plat nomor wajib diisi" },
+      { error: `Plat nomor "${plateNumber.toUpperCase()}" sudah terdaftar atas nama ${existing.customer?.name || 'customer lain'}` },
       { status: 400 }
     );
   }
