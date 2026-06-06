@@ -153,21 +153,13 @@ export default async function SettingsPage() {
             <p className="mt-1 text-xs text-muted-foreground">Harga preset cuci mobil yang muncul di kasir. Klik &ldquo;Edit Harga&rdquo; untuk mengubah.</p>
           </div>
           <div className="p-5 sm:p-6">
-            {cuciServices.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border p-8 text-center">
-                <p className="text-sm text-muted-foreground">
-                  Belum ada layanan cuci.
-                </p>
-              </div>
-            ) : (
-              <CuciPriceEditor
-                initialServices={cuciServices.map((s) => ({
-                  id: s.id,
-                  name: s.name,
-                  price: Number(s.price),
-                }))}
-              />
-            )}
+            <CuciPriceEditor
+              initialServices={cuciServices.map((s) => ({
+                id: s.id,
+                name: s.name,
+                price: Number(s.price),
+              }))}
+            />
           </div>
         </div>
 
@@ -178,22 +170,14 @@ export default async function SettingsPage() {
             <p className="mt-1 text-xs text-muted-foreground">Persentase komisi otomatis untuk Pencuci Mobil.</p>
           </div>
           <div className="p-5 sm:p-6">
-            {commissions.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border p-8 text-center">
-                <p className="text-sm text-muted-foreground">
-                  Belum ada aturan komisi cuci.
-                </p>
-              </div>
-            ) : (
-              <CuciCommissionEditor
-                initialCommissions={commissions.map((c) => ({
-                  id: c.serviceId,
-                  name: c.service.name,
-                  price: Number(c.service.price),
-                  commissionNominal: Number(c.commissionNominal),
-                }))}
-              />
-            )}
+            <CuciCommissionEditor
+              initialCommissions={commissions.map((c) => ({
+                id: c.serviceId,
+                name: c.service.name,
+                price: Number(c.service.price),
+                commissionNominal: Number(c.commissionNominal),
+              }))}
+            />
           </div>
         </div>
 

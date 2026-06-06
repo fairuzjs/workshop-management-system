@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { handlePrismaError } from "@/lib/prisma-errors";
+import { updateEmployeeSchema, parseZodError } from "@/lib/validations";
 
 // PUT /api/employees/[id]
 export async function PUT(
@@ -18,38 +20,30 @@ export async function PUT(
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { name, position, email, phone, salary, isActive } = body;
-
-  if (position) {
-    const validPositions = ["Mekanik", "Pencuci Mobil"];
-    if (!validPositions.includes(position)) {
-      return NextResponse.json(
-        { error: "Posisi tidak valid. Harus Mekanik atau Pencuci Mobil" },
-        { status: 400 }
-      );
-    }
+  const parsed = updateEmployeeSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parseZodError(parsed.error) }, { status: 400 });
   }
+  const { name, position, email, phone, salary, isActive } = parsed.data;
 
-  if (salary !== undefined && salary < 0) {
-    return NextResponse.json(
-      { error: "Gaji tidak boleh negatif" },
-      { status: 400 }
-    );
+  try {
+    const employee = await prisma.employee.update({
+      where: { id },
+      data: {
+        ...(name && { name }),
+        ...(position && { position }),
+        email: email || null,
+        phone: phone || null,
+        ...(salary !== undefined && { salary }),
+        ...(isActive !== undefined && { isActive }),
+      },
+    });
+
+    return NextResponse.json(employee);
+  } catch (error) {
+    const { message, status } = handlePrismaError(error);
+    return NextResponse.json({ error: message }, { status });
   }
-
-  const employee = await prisma.employee.update({
-    where: { id },
-    data: {
-      ...(name && { name }),
-      ...(position && { position }),
-      email: email || null,
-      phone: phone || null,
-      ...(salary !== undefined && { salary }),
-      ...(isActive !== undefined && { isActive }),
-    },
-  });
-
-  return NextResponse.json(employee);
 }
 
 // DELETE /api/employees/[id] - Soft delete (deactivate)
@@ -62,10 +56,15 @@ export async function DELETE(
   if ((session.user as any)?.role !== "SUPERADMIN") return NextResponse.json({ error: "Akses ditolak" }, { status: 403 });
 
   const { id } = await params;
-  const employee = await prisma.employee.update({
-    where: { id },
-    data: { isActive: false },
-  });
+  try {
+    const employee = await prisma.employee.update({
+      where: { id },
+      data: { isActive: false },
+    });
 
-  return NextResponse.json({ success: true, employee });
+    return NextResponse.json({ success: true, employee });
+  } catch (error) {
+    const { message, status } = handlePrismaError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
 }

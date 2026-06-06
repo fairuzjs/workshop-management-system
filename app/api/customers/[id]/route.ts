@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { handlePrismaError } from "@/lib/prisma-errors";
+import { updateCustomerSchema, parseZodError } from "@/lib/validations";
 
 // GET /api/customers/[id]
 export async function GET(
@@ -56,15 +58,24 @@ export async function PUT(
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { name, phone, email } = body;
+  const parsed = updateCustomerSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parseZodError(parsed.error) }, { status: 400 });
+  }
+  const { name, phone, email } = parsed.data;
 
-  const customer = await prisma.customer.update({
-    where: { id },
-    data: { name, phone, email },
-    include: { vehicles: true },
-  });
+  try {
+    const customer = await prisma.customer.update({
+      where: { id },
+      data: { name, phone, email },
+      include: { vehicles: true },
+    });
 
-  return NextResponse.json(customer);
+    return NextResponse.json(customer);
+  } catch (error) {
+    const { message, status } = handlePrismaError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
 }
 
 // DELETE /api/customers/[id]
@@ -94,6 +105,11 @@ export async function DELETE(
     );
   }
 
-  await prisma.customer.delete({ where: { id } });
-  return NextResponse.json({ success: true });
+  try {
+    await prisma.customer.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    const { message, status } = handlePrismaError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
 }

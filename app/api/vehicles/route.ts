@@ -9,25 +9,37 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const search = req.nextUrl.searchParams.get("search") || "";
+  const page = parseInt(req.nextUrl.searchParams.get("page") || "1");
+  const limit = parseInt(req.nextUrl.searchParams.get("limit") || "50");
 
-  const vehicles = await prisma.vehicle.findMany({
-    where: search
-      ? {
-          OR: [
-            { plateNumber: { contains: search, mode: "insensitive" } },
-            { brand: { contains: search, mode: "insensitive" } },
-            { customer: { name: { contains: search, mode: "insensitive" } } },
-          ],
-        }
-      : undefined,
-    include: {
-      customer: true,
-      _count: { select: { workOrders: true } },
-    },
-    orderBy: { createdAt: "desc" },
+  const where = search
+    ? {
+        OR: [
+          { plateNumber: { contains: search, mode: "insensitive" as const } },
+          { brand: { contains: search, mode: "insensitive" as const } },
+          { customer: { name: { contains: search, mode: "insensitive" as const } } },
+        ],
+      }
+    : {};
+
+  const [vehicles, total] = await Promise.all([
+    prisma.vehicle.findMany({
+      where,
+      include: {
+        customer: true,
+        _count: { select: { workOrders: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.vehicle.count({ where }),
+  ]);
+
+  return NextResponse.json({
+    data: vehicles,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
-
-  return NextResponse.json(vehicles);
 }
 
 // POST /api/vehicles — Add vehicle to existing customer

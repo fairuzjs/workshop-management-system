@@ -90,7 +90,7 @@ export default function VehiclesPage() {
         throw new Error(`Failed to fetch vehicles: ${res.statusText}`);
       }
       const data = await res.json();
-      setVehicles(Array.isArray(data) ? data : []);
+      setVehicles(Array.isArray(data) ? data : (data.data || []));
     } catch (error) {
       console.error("Error fetching vehicles:", error);
     } finally {
@@ -124,7 +124,7 @@ export default function VehiclesPage() {
         throw new Error(`Failed to fetch customers: ${res.statusText}`);
       }
       const data = await res.json();
-      setCustomers(Array.isArray(data) ? data : []);
+      setCustomers(Array.isArray(data) ? data : (data.data || []));
     } catch (error) {
       console.error("Error fetching customers:", error);
     }
@@ -387,13 +387,13 @@ export default function VehiclesPage() {
         <form onSubmit={handleAddVehicle} className="space-y-4">
           <Select label="Kontak" id="customerId" value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}
             options={customers.map((c) => ({ value: c.id, label: `${c.phone}` }))} placeholder="Pilih kontak" required />
-          <Input label="Plat Nomor" id="plate" value={form.plateNumber} onChange={(e) => setForm({ ...form, plateNumber: e.target.value })} placeholder="B 1234 ABC" required />
+          <Input label="Plat Nomor" id="plate" value={form.plateNumber} maxLength={9} onChange={(e) => setForm({ ...form, plateNumber: e.target.value.toUpperCase().replace(/\s+/g, "") })} placeholder="B 1234 ABC" required />
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input label="Merek" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} placeholder="Toyota" />
-            <Input label="Model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="Avanza" />
+            <Input label="Merek" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value.toUpperCase() })} placeholder="Toyota" />
+            <Input label="Model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value.toUpperCase() })} placeholder="Avanza" />
           </div>
           <div className="grid gap-3 sm:grid-cols-1">
-            <Input label="Tipe" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} placeholder="MPV" />
+            <Input label="Tipe" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value.toUpperCase() })} placeholder="MPV" />
           </div>
           <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <Button variant="outline" type="button" onClick={() => setShowModal(false)} fullWidth className="sm:w-auto">Batal</Button>
@@ -417,13 +417,13 @@ export default function VehiclesPage() {
           <hr className="border-border" />
           <div>
             <h3 className="mb-3 text-sm font-semibold text-foreground">Data Kendaraan</h3>
-            <Input label="Plat Nomor" value={customerForm.plateNumber} onChange={(e) => setCustomerForm({ ...customerForm, plateNumber: e.target.value })} placeholder="B 1234 ABC" required />
+            <Input label="Plat Nomor" value={customerForm.plateNumber} maxLength={9} onChange={(e) => setCustomerForm({ ...customerForm, plateNumber: e.target.value.toUpperCase().replace(/\s+/g, "") })} placeholder="B 1234 ABC" required />
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Input label="Merek" value={customerForm.brand} onChange={(e) => setCustomerForm({ ...customerForm, brand: e.target.value })} placeholder="Toyota" />
-              <Input label="Model" value={customerForm.model} onChange={(e) => setCustomerForm({ ...customerForm, model: e.target.value })} placeholder="Avanza" />
+              <Input label="Merek" value={customerForm.brand} onChange={(e) => setCustomerForm({ ...customerForm, brand: e.target.value.toUpperCase() })} placeholder="Toyota" />
+              <Input label="Model" value={customerForm.model} onChange={(e) => setCustomerForm({ ...customerForm, model: e.target.value.toUpperCase() })} placeholder="Avanza" />
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-1">
-              <Input label="Tipe" value={customerForm.type} onChange={(e) => setCustomerForm({ ...customerForm, type: e.target.value })} placeholder="MPV" />
+              <Input label="Tipe" value={customerForm.type} onChange={(e) => setCustomerForm({ ...customerForm, type: e.target.value.toUpperCase() })} placeholder="MPV" />
             </div>
           </div>
           <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
@@ -436,14 +436,14 @@ export default function VehiclesPage() {
       {/* Edit Vehicle Modal */}
       <Modal isOpen={!!editVehicle} onClose={() => setEditVehicle(null)} title="Edit Kendaraan">
         <form onSubmit={handleEdit} className="space-y-4">
-          <Input label="Plat Nomor" value={form.plateNumber} onChange={(e) => setForm({ ...form, plateNumber: e.target.value })} required />
+          <Input label="Plat Nomor" value={form.plateNumber} maxLength={9} onChange={(e) => setForm({ ...form, plateNumber: e.target.value.toUpperCase().replace(/\s+/g, "") })} required />
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input label="Merek" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
-            <Input label="Model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
+            <Input label="Merek" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value.toUpperCase() })} />
+            <Input label="Model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value.toUpperCase() })} />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input label="Tipe" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} />
-            <Input label="Warna" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} />
+            <Input label="Tipe" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value.toUpperCase() })} />
+            <Input label="Warna" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value.toUpperCase() })} />
           </div>
           <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <Button variant="outline" type="button" onClick={() => setEditVehicle(null)} fullWidth className="sm:w-auto">Batal</Button>

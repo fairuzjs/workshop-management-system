@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createExpenseSchema, parseZodError } from "@/lib/validations";
+import { handlePrismaError } from "@/lib/prisma-errors";
+import { checkClosingLock } from "@/lib/closing-lock";
+import { logAudit, getClientIp } from "@/lib/audit";
 
 // GET /api/expenses — List expenses
 export async function GET(req: NextRequest) {
@@ -63,14 +66,35 @@ export async function POST(req: NextRequest) {
   }
   const { category, amount, description, date } = parsed.data;
 
-  const expense = await prisma.expense.create({
-    data: {
-      category,
-      amount,
-      description: description || null,
-      date: date ? new Date(date) : new Date(),
-    },
-  });
+  // Check monthly closing lock
+  const expenseDate = date ? new Date(date) : new Date();
+  const lockMsg = await checkClosingLock(expenseDate);
+  if (lockMsg) {
+    return NextResponse.json({ error: lockMsg }, { status: 403 });
+  }
 
-  return NextResponse.json(expense, { status: 201 });
+  try {
+    const expense = await prisma.expense.create({
+      data: {
+        category,
+        amount,
+        description: description || null,
+        date: expenseDate,
+      },
+    });
+
+    logAudit({
+      userId: session.user.id,
+      action: "CREATE",
+      entity: "Expense",
+      entityId: expense.id,
+      details: { category, amount },
+      ipAddress: getClientIp(req),
+    });
+
+    return NextResponse.json(expense, { status: 201 });
+  } catch (error) {
+    const { message, status } = handlePrismaError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
 }

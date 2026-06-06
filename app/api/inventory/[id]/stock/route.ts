@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { handlePrismaError } from "@/lib/prisma-errors";
+import { logAudit, getClientIp } from "@/lib/audit";
 
-// POST /api/inventory/[id]/stock — Stock In/Out
+// POST /api/inventory/[id]/stock — Stock In/Out (atomic)
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -33,50 +35,62 @@ export async function POST(
     );
   }
 
-  const item = await prisma.inventory.findUnique({ where: { id } });
-  if (!item) {
-    return NextResponse.json({ error: "Item tidak ditemukan" }, { status: 404 });
-  }
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Atomic read inside transaction — prevents race conditions
+      const item = await tx.inventory.findUnique({ where: { id } });
+      if (!item) {
+        throw new Error("Item tidak ditemukan");
+      }
 
-  if (type === "OUT" && item.qty < qty) {
-    return NextResponse.json(
-      { error: `Stok tidak cukup. Stok saat ini: ${item.qty}` },
-      { status: 400 }
-    );
-  }
+      if (type === "OUT" && item.qty < qty) {
+        throw new Error(`Stok tidak cukup. Stok saat ini: ${item.qty}`);
+      }
 
-  // Update stock and create log in transaction
-  const queries: any[] = [
-    prisma.inventory.update({
-      where: { id },
-      data: {
-        qty: type === "IN" ? item.qty + qty : item.qty - qty,
-      },
-    }),
-    prisma.inventoryLog.create({
-      data: {
-        inventoryId: id,
-        qty,
-        type,
-        notes: notes || null,
-      },
-    }),
-  ];
-
-  if (type === "IN" && recordExpense && Number(item.capitalPrice) > 0) {
-    queries.push(
-      prisma.expense.create({
+      // Atomic increment/decrement — safe for concurrent access
+      const updatedItem = await tx.inventory.update({
+        where: { id },
         data: {
-          category: "Pembelian Stok",
-          amount: Number(item.capitalPrice) * qty,
-          description: `Restock ${item.name} (${qty} ${item.unit}) - CASH`,
+          qty: type === "IN" ? { increment: qty } : { decrement: qty },
         },
-      })
-    );
+      });
+
+      // Create inventory log
+      await tx.inventoryLog.create({
+        data: {
+          inventoryId: id,
+          qty,
+          type,
+          notes: notes || null,
+        },
+      });
+
+      // Auto-record expense for cash stock-in purchases
+      if (type === "IN" && recordExpense && Number(item.capitalPrice) > 0) {
+        await tx.expense.create({
+          data: {
+            category: "Pembelian Stok",
+            amount: Number(item.capitalPrice) * qty,
+            description: `Restock ${item.name} (${qty} ${item.unit}) - CASH`,
+          },
+        });
+      }
+
+      return updatedItem;
+    });
+
+    logAudit({
+      userId: session.user.id,
+      action: type === "IN" ? "STOCK_IN" : "STOCK_OUT",
+      entity: "Inventory",
+      entityId: id,
+      details: { qty, type, notes },
+      ipAddress: getClientIp(req),
+    });
+
+    return NextResponse.json(result);
+  } catch (error) {
+    const { message, status } = handlePrismaError(error);
+    return NextResponse.json({ error: message }, { status });
   }
-
-  const results = await prisma.$transaction(queries);
-  const updatedItem = results[0];
-
-  return NextResponse.json(updatedItem);
 }

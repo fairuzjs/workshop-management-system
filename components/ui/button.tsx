@@ -11,14 +11,14 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles = {
   primary:
-    "bg-primary text-primary-foreground shadow-sm hover:bg-primary/95 hover:shadow-md focus-visible:ring-primary/50",
+    "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
   secondary:
-    "bg-secondary text-secondary-foreground hover:bg-secondary/90 hover:shadow-sm",
+    "bg-secondary text-secondary-foreground hover:bg-secondary/80",
   destructive:
-    "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/95 hover:shadow-md focus-visible:ring-destructive/50",
+    "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
   ghost: "hover:bg-accent hover:text-accent-foreground",
   outline:
-    "border border-input bg-background hover:bg-accent hover:text-accent-foreground shadow-sm hover:shadow-sm",
+    "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
 };
 
 const sizeStyles = {
@@ -45,10 +45,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "inline-flex items-center justify-center font-medium transition-all duration-150 ease-out",
-          "focus:outline-none focus:ring-2 focus:ring-ring/25 focus-visible:ring-offset-2",
-          "active:scale-[0.98] active:brightness-95",
-          "disabled:pointer-events-none disabled:opacity-50",
+          "inline-flex items-center justify-center font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:pointer-events-none disabled:opacity-50",
           variantStyles[variant],
           sizeStyles[size],
           fullWidth && "w-full",
@@ -57,7 +54,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         disabled={disabled || loading}
         {...props}
       >
-        {loading && <Loader2 className="h-4 w-4 animate-spin shrink-0" />}
+        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
         {children}
       </button>
     );

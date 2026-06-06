@@ -46,9 +46,12 @@ export async function GET(req: NextRequest) {
       },
       parts: { include: { inventory: { select: { name: true } } } },
       historyItems: {
-        select: { title: true, price: true, employees: { select: { name: true } } },
+        include: {
+          employees: { select: { name: true, position: true } },
+        },
         orderBy: { createdAt: 'asc' },
       },
+      transaction: true,
     },
   });
 
@@ -68,7 +71,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Return limited public-facing data
+  // Return public-facing data including pricing and employee info
+  const allEmployees = [
+    ...workOrder.services.flatMap((ws) => ws.employees),
+    ...workOrder.historyItems.flatMap((h) => (h as any).employees || []),
+  ];
+  const uniqueEmployeeNames = [...new Set(allEmployees.map((e) => e.name))];
+
   return NextResponse.json({
     trackingToken: workOrder.trackingToken,
     status: workOrder.status,
@@ -79,10 +88,11 @@ export async function GET(req: NextRequest) {
     customerPhone: customerPhone.length > 4
       ? "****" + customerPhone.slice(-4)
       : customerPhone,
-    employeeName: null,
+    employeeName: uniqueEmployeeNames.join(", ") || null,
     services: workOrder.services.map((ws) => ({
       name: ws.service.name,
       price: Number(ws.service.price),
+      employees: ws.employees.map((e) => ({ name: e.name, position: e.position })),
     })),
     parts: workOrder.parts.map((p) => ({
       name: p.inventory.name,
@@ -92,10 +102,14 @@ export async function GET(req: NextRequest) {
     historyItems: workOrder.historyItems.map((h) => ({
       name: h.title,
       price: Number(h.price),
+      employees: ((h as any).employees || []).map((e: any) => ({ name: e.name })),
     })),
     totalCost: Number(workOrder.totalCost),
     createdAt: workOrder.createdAt,
     startedAt: workOrder.startedAt,
     completedAt: workOrder.completedAt,
+    estimatedCompletionAt: workOrder.estimatedCompletionAt,
+    isPaid: !!workOrder.transaction,
+    paidAt: workOrder.transaction?.createdAt || null,
   });
 }

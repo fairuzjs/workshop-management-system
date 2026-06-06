@@ -176,6 +176,7 @@ model WorkOrder {
   notes         String?
   startedAt     DateTime?       @map("started_at")
   completedAt   DateTime?       @map("completed_at")
+  estimatedCompletionAt DateTime? @map("estimated_completion_at")
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
@@ -363,6 +364,26 @@ model WorkOrderHistoryItem {
   employees   Employee[]
 
   @@map("work_order_history_items")
+}
+
+// ============================================
+// AUDIT LOG — Tracks sensitive operations
+// Retention: minimum 12 months (no auto-purge)
+// ============================================
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  action    String   // CREATE, UPDATE, DELETE, CLOSE, REOPEN, STOCK_IN, STOCK_OUT
+  entity    String   // WorkOrder, Transaction, Expense, MonthlyClosing, Employee, Inventory, etc.
+  entityId  String   @map("entity_id")
+  details   String?  // JSON stringified change details
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
 // ============================================

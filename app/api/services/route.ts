@@ -22,3 +22,36 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(services);
 }
+
+// POST /api/services — Create a new service
+export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if ((session.user as any)?.role !== "SUPERADMIN") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    const body = await req.json();
+    const { name, category, price } = body;
+
+    if (!name || !category || price === undefined) {
+      return NextResponse.json({ error: "Data tidak lengkap" }, { status: 400 });
+    }
+
+    const newService = await prisma.service.create({
+      data: {
+        name,
+        category,
+        price: Number(price),
+        isActive: true,
+        ...(category === "CUCI" ? { commission: { create: { commissionNominal: 0 } } } : {})
+      },
+    });
+
+    return NextResponse.json(newService, { status: 201 });
+  } catch (error) {
+    console.error("Error creating service:", error);
+    return NextResponse.json({ error: "Gagal membuat layanan" }, { status: 500 });
+  }
+}

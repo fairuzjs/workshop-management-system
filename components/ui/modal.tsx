@@ -11,7 +11,6 @@ interface ModalProps {
   description?: string;
   children: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "full";
-  className?: string;
 }
 
 const sizeStyles = {
@@ -31,7 +30,6 @@ export function Modal({
   description,
   children,
   size = "md",
-  className,
 }: ModalProps) {
   const handleEscape = useCallback(
     (e: KeyboardEvent) => {
@@ -54,46 +52,45 @@ export function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity duration-300 animate-fade-in"
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
       />
 
       {/* Modal Content */}
       <div
         className={cn(
-          "relative z-50 w-full bg-card shadow-2xl border border-border/80 transition-all duration-300",
+          "relative z-50 w-full bg-card shadow-2xl",
           // Mobile: bottom sheet
-          "max-h-[92vh] overflow-y-auto rounded-t-3xl p-6",
+          "max-h-[90vh] overflow-y-auto rounded-t-3xl border-t border-x border-border p-6",
           // Desktop: centered modal
-          "sm:rounded-3xl sm:max-w-lg sm:w-full sm:animate-slide-up",
-          sizeStyles[size],
-          className
+          "sm:mx-4 sm:rounded-3xl sm:border sm:animate-fade-in",
+          sizeStyles[size]
         )}
       >
         {/* Header */}
         <div className="flex items-start justify-between mb-5">
-          <div className="space-y-1">
-            <h2 className="text-xl font-bold tracking-tight text-foreground">{title}</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">{title}</h2>
             {description && (
-              <p className="text-sm text-muted-foreground leading-relaxed">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {description}
               </p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-muted hover:text-foreground active:scale-90"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             aria-label="Close"
           >
-            <X className="h-4.5 w-4.5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="text-sm text-foreground/90">{children}</div>
+        <div>{children}</div>
       </div>
     </div>
   );

@@ -33,13 +33,16 @@ interface TrackingResult {
   vehicleModel: string | null;
   customerPhone: string;
   employeeName: string | null;
-  services: { name: string; price: number }[];
+  services: { name: string; price: number; employees?: { name: string; position: string }[] }[];
   parts?: { name: string; qty: number; price: number }[];
-  historyItems?: { name: string; price: number }[];
+  historyItems?: { name: string; price: number; employees?: { name: string }[] }[];
   totalCost: number;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  estimatedCompletionAt?: string | null;
+  isPaid: boolean;
+  paidAt: string | null;
 }
 
 const statusConfig: Record<
@@ -87,6 +90,7 @@ const STEPS = [
   { key: "ANTRI", label: "Antrian", step: 1, desc: "Menunggu Giliran" },
   { key: "PROSES", label: "Dikerjakan", step: 2, desc: "Sedang Ditangani" },
   { key: "SELESAI", label: "Selesai", step: 3, desc: "Siap Diambil" },
+  { key: "LUNAS", label: "Lunas", step: 4, desc: "Pembayaran Selesai" },
 ];
 
 export default function TrackingPage() {
@@ -130,7 +134,7 @@ export default function TrackingPage() {
   };
 
   useEffect(() => {
-    if (!result || result.status === "SELESAI") return;
+    if (!result || (result.status === "SELESAI" && result.isPaid)) return;
 
     const interval = setInterval(async () => {
       try {
@@ -158,9 +162,19 @@ export default function TrackingPage() {
     }
   }, [result]);
 
-  const config = result ? statusConfig[result.status] : null;
+  const config = result ? statusConfig[result.status] || statusConfig["ANTRI"] : null;
   const StatusIcon = config?.icon || Clock;
-  const currentStep = config?.step ?? 0;
+  
+  let currentStep = config?.step ?? 0;
+  let headerLabel = config?.label ?? "";
+  let headerDesc = config?.description ?? "";
+  
+  if (result && result.status === "SELESAI" && result.isPaid) {
+    currentStep = 4;
+    headerLabel = "Transaksi Selesai & Lunas";
+    headerDesc = "Pembayaran telah diterima. Terima kasih atas kunjungan Anda!";
+  }
+
   const lastUpdate = result ? (result.completedAt || result.startedAt || result.createdAt) : "";
 
   // License plate rendering helper
@@ -426,11 +440,17 @@ export default function TrackingPage() {
             <div className="flex items-center gap-2">
               <span className="hidden sm:inline-block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</span>
               <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 border ${config!.bgColor} ${config!.borderColor}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${config!.color.includes("emerald") ? "bg-emerald-500" : config!.color.includes("blue") ? "bg-blue-500" : "bg-amber-500"} animate-pulse`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${config!.color.includes("emerald") ? "bg-emerald-500" : config!.color.includes("blue") ? "bg-blue-500" : "bg-amber-500"} ${result.status === "SELESAI" ? "" : "animate-pulse"}`} />
                 <span className={`text-[10px] font-extrabold ${config!.color}`}>
                   {result.status}
                 </span>
               </div>
+              {result.isPaid && (
+                <div className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 border border-emerald-500/30 bg-emerald-500/10">
+                  <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                  <span className="text-[10px] font-extrabold text-emerald-500">LUNAS</span>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -452,10 +472,10 @@ export default function TrackingPage() {
                     Kondisi Pelacakan
                   </span>
                   <h1 className="text-xl font-black tracking-tight text-foreground sm:text-2xl">
-                    {config!.label}
+                    {headerLabel}
                   </h1>
                   <p className="text-xs text-muted-foreground leading-relaxed max-w-md">
-                    {config!.description}
+                    {headerDesc}
                   </p>
                 </div>
               </div>
@@ -471,6 +491,21 @@ export default function TrackingPage() {
                 </div>
               </div>
             </div>
+
+            {/* ETA Section */}
+            {result.estimatedCompletionAt && result.status !== "SELESAI" && (
+              <div className="mt-6 flex items-center gap-3 rounded-2xl bg-amber-500/10 p-4 border border-amber-500/20">
+                <Clock className="h-6 w-6 text-amber-600 dark:text-amber-400 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600/80 dark:text-amber-400/80">
+                    Estimasi Selesai
+                  </p>
+                  <p className="font-mono text-sm font-bold text-amber-700 dark:text-amber-300">
+                    {formatDateTime(result.estimatedCompletionAt)}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 3. Progress Status */}
@@ -483,13 +518,14 @@ export default function TrackingPage() {
               <div
                 className="absolute left-6 top-5 h-1 -translate-y-1/2 bg-primary rounded-full transition-all duration-700"
                 style={{
-                  width: `calc(${((currentStep - 1) / 2) * 100}% - ${((currentStep - 1) / 2) * 12}px)`,
+                  width: `calc(${((currentStep - 1) / 3) * 100}% - ${((currentStep - 1) / 3) * 12}px)`,
                   maxWidth: "100%",
                 }}
               />
 
               {STEPS.map((s) => {
-                const done = currentStep > s.step;
+                const isFinalStepAndActive = currentStep === s.step && s.step === 4;
+                const done = currentStep > s.step || isFinalStepAndActive;
                 const active = currentStep === s.step;
                 
                 let stepBadgeColor = "border-slate-200 bg-background text-muted-foreground dark:border-slate-800";
@@ -561,8 +597,14 @@ export default function TrackingPage() {
                   <div className="mt-6 pl-1 space-y-6">
                     {[
                       { label: "Kendaraan Masuk", time: result.createdAt, show: true, subtitle: "Penerimaan bengkel" },
-                      { label: "Mulai Dikerjakan", time: result.startedAt, show: !!result.startedAt, subtitle: "Teknisi melakukan pengerjaan" },
+                      { 
+                        label: "Mulai Dikerjakan", 
+                        time: result.startedAt, 
+                        show: !!result.startedAt, 
+                        subtitle: result.employeeName ? `Dikerjakan oleh: ${result.employeeName}` : "Teknisi melakukan pengerjaan" 
+                      },
                       { label: "Selesai", time: result.completedAt, show: !!result.completedAt, subtitle: "Siap diserahkan kembali" },
+                      { label: "Pembayaran Lunas", time: result.paidAt, show: result.isPaid, subtitle: "Transaksi selesai" },
                     ]
                       .filter((t) => t.show)
                       .map((t, i, arr) => {
@@ -689,11 +731,23 @@ export default function TrackingPage() {
                       <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Layanan Utama / Jasa</span>
                     </div>
                     {result.services.map((s, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs py-0.5">
-                        <span className="font-medium text-foreground">{s.name}</span>
-                        <span className="font-bold font-mono text-foreground tabular-nums">
-                          {formatCurrency(s.price)}
-                        </span>
+                      <div key={i} className="flex flex-col py-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-foreground">{s.name}</span>
+                          <span className="font-bold font-mono text-foreground tabular-nums">
+                            {formatCurrency(s.price)}
+                          </span>
+                        </div>
+                        {s.employees && s.employees.length > 0 && (
+                          <div className="flex gap-1 mt-1">
+                            {s.employees.map((emp, idx) => (
+                              <span key={idx} className="inline-flex items-center rounded-md bg-secondary/50 px-1.5 py-0.5 text-[9px] font-medium text-secondary-foreground">
+                                <User className="h-2.5 w-2.5 mr-1" />
+                                {emp.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -727,11 +781,23 @@ export default function TrackingPage() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pekerjaan Tambahan</span>
                       </div>
                       {result.historyItems.map((h, i) => (
-                        <div key={`h-${i}`} className="flex items-center justify-between text-xs py-0.5">
-                          <span className="font-medium text-foreground">{h.name}</span>
-                          <span className="font-bold font-mono text-foreground tabular-nums">
-                            {formatCurrency(h.price)}
-                          </span>
+                        <div key={`h-${i}`} className="flex flex-col py-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-foreground">{h.name}</span>
+                            <span className="font-bold font-mono text-foreground tabular-nums">
+                              {formatCurrency(h.price)}
+                            </span>
+                          </div>
+                          {h.employees && h.employees.length > 0 && (
+                            <div className="flex gap-1 mt-1">
+                              {h.employees.map((emp, idx) => (
+                                <span key={idx} className="inline-flex items-center rounded-md bg-secondary/50 px-1.5 py-0.5 text-[9px] font-medium text-secondary-foreground">
+                                  <User className="h-2.5 w-2.5 mr-1" />
+                                  {emp.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -739,8 +805,15 @@ export default function TrackingPage() {
                 </div>
 
                 {/* Billing Summary Footer */}
-                <div className="bg-slate-50 dark:bg-slate-900/50 border-t border-border/80 px-6 py-5 flex items-center justify-between">
-                  <div className="space-y-0.5">
+                <div className="bg-slate-50 dark:bg-slate-900/50 border-t border-border/80 px-6 py-5 flex items-center justify-between relative overflow-hidden">
+                  {result.isPaid && (
+                    <div className="absolute inset-0 bg-emerald-500/5 flex items-center justify-center opacity-30 pointer-events-none">
+                      <div className="rotate-[-10deg] border-4 border-emerald-500 text-emerald-500 font-black text-2xl px-6 py-1 tracking-widest rounded-lg">
+                        LUNAS
+                      </div>
+                    </div>
+                  )}
+                  <div className="space-y-0.5 relative z-10">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground block">
                       {result.status === "SELESAI" ? "Total Final" : "Total Sementara"}
                     </span>

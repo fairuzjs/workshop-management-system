@@ -5,27 +5,26 @@ import { z } from "zod";
 // ============================================
 
 export const createCustomerSchema = z.object({
-  name: z.string().optional().nullable(),
+  name: z.string().optional(),
   phone: z
     .string({ message: "Nomor telepon wajib diisi" })
     .min(1, "Nomor telepon wajib diisi"),
-  email: z.string().email("Format email tidak valid").optional().or(z.literal("")).nullable(),
+  email: z.string().email("Format email tidak valid").nullable().optional().or(z.literal("")),
   vehicle: z
     .object({
-      plateNumber: z.string().min(1).optional().nullable(),
-      type: z.string().optional().nullable(),
-      brand: z.string().optional().nullable(),
-      model: z.string().optional().nullable(),
-      color: z.string().optional().nullable(),
+      plateNumber: z.string().optional().or(z.literal("")),
+      type: z.string().optional().or(z.literal("")),
+      brand: z.string().optional().or(z.literal("")),
+      model: z.string().optional().or(z.literal("")),
+      color: z.string().optional().or(z.literal("")),
     })
-    .optional()
-    .nullable(),
+    .optional(),
 });
 
 export const updateCustomerSchema = z.object({
-  name: z.string().optional().nullable(),
+  name: z.string().optional(),
   phone: z.string().min(1, "Nomor telepon wajib diisi").optional(),
-  email: z.string().email("Format email tidak valid").optional().or(z.literal("")).nullable(),
+  email: z.string().email("Format email tidak valid").nullable().optional().or(z.literal("")),
 });
 
 // ============================================
@@ -35,18 +34,18 @@ export const updateCustomerSchema = z.object({
 export const createVehicleSchema = z.object({
   customerId: z.string().uuid("Customer ID tidak valid"),
   plateNumber: z.string().min(1, "Plat nomor wajib diisi"),
-  type: z.string().optional().nullable(),
-  brand: z.string().optional().nullable(),
-  model: z.string().optional().nullable(),
-  color: z.string().optional().nullable(),
+  type: z.string().optional(),
+  brand: z.string().optional(),
+  model: z.string().optional(),
+  color: z.string().optional(),
 });
 
 export const updateVehicleSchema = z.object({
   plateNumber: z.string().min(1, "Plat nomor wajib diisi").optional(),
-  type: z.string().optional().nullable(),
-  brand: z.string().optional().nullable(),
-  model: z.string().optional().nullable(),
-  color: z.string().optional().nullable(),
+  type: z.string().optional(),
+  brand: z.string().optional(),
+  model: z.string().optional(),
+  color: z.string().optional(),
 });
 
 // ============================================
@@ -58,22 +57,22 @@ export const createEmployeeSchema = z.object({
   position: z.enum(["Mekanik", "Pencuci Mobil"], {
     message: "Posisi harus Mekanik atau Pencuci Mobil",
   }),
-  email: z.string().email("Format email tidak valid").optional().or(z.literal("")).nullable(),
-  phone: z.string().optional().nullable(),
-  salary: z.number().min(0, "Gaji tidak boleh negatif").optional().nullable(),
+  email: z.string().email("Format email tidak valid").nullable().optional().or(z.literal("")),
+  phone: z.string().optional(),
+  salary: z.number().min(0, "Gaji tidak boleh negatif").optional(),
   isActive: z.boolean().optional(),
 });
 
 export const updateEmployeeSchema = z.object({
-  name: z.string().min(1, "Nama wajib diisi").optional().nullable(),
+  name: z.string().min(1, "Nama wajib diisi").optional(),
   position: z
     .enum(["Mekanik", "Pencuci Mobil"], {
       message: "Posisi harus Mekanik atau Pencuci Mobil",
     })
     .optional(),
-  email: z.string().email("Format email tidak valid").optional().or(z.literal("")).nullable(),
-  phone: z.string().optional().nullable(),
-  salary: z.number().min(0, "Gaji tidak boleh negatif").optional().nullable(),
+  email: z.string().email("Format email tidak valid").nullable().optional().or(z.literal("")),
+  phone: z.string().optional(),
+  salary: z.number().min(0, "Gaji tidak boleh negatif").optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -83,15 +82,33 @@ export const updateEmployeeSchema = z.object({
 
 export const createInventorySchema = z.object({
   name: z.string().min(1, "Nama wajib diisi"),
-  category: z.string().optional().nullable(),
+  category: z.string().optional(),
   qty: z.number().int().min(0).optional().default(0),
   unit: z.string().min(1, "Satuan wajib diisi"),
   minStock: z.number().int().min(0).optional().default(0),
   capitalPrice: z.number().min(0).optional().default(0),
   price: z.number().min(0, "Harga wajib diisi"),
-  supplierId: z.string().uuid().optional().or(z.literal("")).nullable(),
-  rackPosition: z.string().optional().nullable(),
-  paymentMethod: z.string().optional().nullable(),
+  supplierId: z.string().uuid("Supplier wajib dipilih"),
+  rackPosition: z.string().nullable().optional(),
+  paymentMethod: z.string().optional(),
+});
+
+export const updateInventorySchema = z.object({
+  name: z.string().min(1, "Nama wajib diisi").optional(),
+  category: z.string().optional(),
+  unit: z.string().min(1, "Satuan wajib diisi").optional(),
+  minStock: z.number().int().min(0).optional(),
+  capitalPrice: z.number().min(0).optional(),
+  price: z.number().min(0, "Harga wajib diisi").optional(),
+  supplierId: z.string().uuid("Supplier wajib dipilih").optional(),
+  rackPosition: z.string().nullable().optional(),
+});
+
+export const stockAdjustmentSchema = z.object({
+  qty: z.number().int().positive("Jumlah harus lebih dari 0"),
+  type: z.enum(["IN", "OUT"], { message: "Tipe harus IN atau OUT" }),
+  notes: z.string().optional(),
+  recordExpense: z.boolean().optional(),
 });
 
 // ============================================
@@ -101,15 +118,15 @@ export const createInventorySchema = z.object({
 export const createExpenseSchema = z.object({
   category: z.string().min(1, "Kategori wajib diisi"),
   amount: z.number().positive("Jumlah harus lebih dari 0"),
-  description: z.string().optional().nullable(),
-  date: z.string().optional().nullable(), // ISO date string
+  description: z.string().optional(),
+  date: z.string().optional(), // ISO date string
 });
 
 export const updateExpenseSchema = z.object({
   category: z.string().min(1, "Kategori wajib diisi").optional(),
   amount: z.number().positive("Jumlah harus lebih dari 0").optional(),
-  description: z.string().optional().nullable(),
-  date: z.string().optional().nullable(),
+  description: z.string().optional(),
+  date: z.string().optional(),
 });
 
 // ============================================
@@ -118,14 +135,14 @@ export const updateExpenseSchema = z.object({
 
 export const createSupplierSchema = z.object({
   name: z.string().min(1, "Nama supplier wajib diisi"),
-  phone: z.string().optional().nullable(),
-  address: z.string().optional().nullable(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
 });
 
 export const updateSupplierSchema = z.object({
   name: z.string().min(1, "Nama supplier wajib diisi").optional(),
-  phone: z.string().optional().nullable(),
-  address: z.string().optional().nullable(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
 });
 
 // ============================================
@@ -136,6 +153,7 @@ export const createWorkOrderSchema = z.object({
   vehicleId: z.string().uuid("Kendaraan wajib dipilih"),
   serviceType: z.enum(["SERVIS", "CUCI"], { message: "Tipe layanan wajib dipilih" }),
   serviceIds: z.array(z.string().uuid()).optional(),
+  estimatedCompletionAt: z.string().optional(),
   manualServices: z
     .array(
       z.object({
@@ -144,7 +162,19 @@ export const createWorkOrderSchema = z.object({
       })
     )
     .optional(),
-  notes: z.string().optional().nullable(),
+  notes: z.string().nullable().optional(),
+});
+
+const employeeAssignmentSchema = z.object({
+  targetType: z.enum(["service", "part", "history"]),
+  targetId: z.string(),
+  employeeIds: z.array(z.string()),
+});
+
+export const updateWorkOrderSchema = z.object({
+  status: z.enum(["ANTRI", "PROSES", "SELESAI"]).optional(),
+  employeeAssignments: z.array(employeeAssignmentSchema).optional(),
+  estimatedCompletionAt: z.string().nullable().optional(),
 });
 
 // ============================================
