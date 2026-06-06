@@ -9,29 +9,41 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const search = req.nextUrl.searchParams.get("search") || "";
+  const page = parseInt(req.nextUrl.searchParams.get("page") || "1");
+  const limit = parseInt(req.nextUrl.searchParams.get("limit") || "50");
 
-  const customers = await prisma.customer.findMany({
-    where: search
-      ? {
-          OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { phone: { contains: search } },
-            {
-              vehicles: {
-                some: { plateNumber: { contains: search, mode: "insensitive" } },
-              },
+  const where = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: "insensitive" as const } },
+          { phone: { contains: search } },
+          {
+            vehicles: {
+              some: { plateNumber: { contains: search, mode: "insensitive" as const } },
             },
-          ],
-        }
-      : undefined,
-    include: {
-      vehicles: true,
-      _count: { select: { vehicles: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+          },
+        ],
+      }
+    : {};
 
-  return NextResponse.json(customers);
+  const [customers, total] = await Promise.all([
+    prisma.customer.findMany({
+      where,
+      include: {
+        vehicles: true,
+        _count: { select: { vehicles: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.customer.count({ where }),
+  ]);
+
+  return NextResponse.json({
+    data: customers,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  });
 }
 
 // POST /api/customers — Create customer (with optional vehicle)

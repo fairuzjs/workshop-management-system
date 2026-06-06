@@ -182,8 +182,9 @@ export default function CashierPage() {
     try {
       const res = await fetch("/api/inventory");
       if (res.ok) {
-        const data = await res.json();
-        setInventoryItems(data.filter((i: InventoryItem) => i.qty > 0));
+        const json = await res.json();
+        const items = Array.isArray(json) ? json : (json.data || []);
+        setInventoryItems(items.filter((i: InventoryItem) => i.qty > 0));
       }
     } catch (error) {
       console.error("Error:", error);
@@ -781,6 +782,32 @@ export default function CashierPage() {
                             <tr key={p.tempId} className="hover:bg-muted/30">
                               <td className="px-4 py-2.5">
                                 <div className="text-foreground font-medium">{p.name}</div>
+                                <div className="flex flex-wrap gap-1 mt-1.5 items-center">
+                                  <span className="text-[10px] text-muted-foreground mr-1">Mekanik:</span>
+                                  {p.employeeIds.map(empId => {
+                                    const emp = employees.find(e => e.id === empId);
+                                    return (
+                                      <Badge key={empId} variant="outline" className="text-[10px] py-0 h-5 px-1.5 bg-primary/5">
+                                        {emp?.name || empId.slice(0,6)}
+                                        <button onClick={() => updateItemEmployees('part', p.tempId, p.employeeIds.filter(id => id !== empId))} className="ml-1 text-muted-foreground hover:text-destructive">×</button>
+                                      </Badge>
+                                    );
+                                  })}
+                                  <select
+                                    className="text-[10px] h-5 border border-dashed rounded px-1 bg-transparent text-muted-foreground focus:outline-none focus:border-primary"
+                                    value=""
+                                    onChange={(e) => {
+                                      if (e.target.value) {
+                                        updateItemEmployees('part', p.tempId, [...p.employeeIds, e.target.value]);
+                                      }
+                                    }}
+                                  >
+                                    <option value="">+ Mekanik</option>
+                                    {employees.filter(e => e.position === "Mekanik" && !p.employeeIds.includes(e.id)).map(e => (
+                                      <option key={e.id} value={e.id}>{e.name} ({e.position})</option>
+                                    ))}
+                                  </select>
+                                </div>
                               </td>
                               <td className="px-4 py-2.5 text-right text-muted-foreground align-top pt-3">{formatCurrency(p.price)}</td>
                               <td className="px-4 py-2.5 text-center font-medium text-foreground align-top pt-3">{p.qty}</td>

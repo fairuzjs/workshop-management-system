@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { handlePrismaError } from "@/lib/prisma-errors";
+import { updateWorkOrderSchema, parseZodError } from "@/lib/validations";
 
 // GET /api/work-orders/[id]
 export async function GET(
@@ -12,38 +14,43 @@ export async function GET(
 
   const { id } = await params;
 
-  const workOrder = await prisma.workOrder.findUnique({
-    where: { id },
-    include: {
-      vehicle: { include: { customer: true } },
-      user: { select: { id: true, name: true } },
-      services: {
-        include: {
-          service: true,
-          employees: { select: { id: true, name: true, position: true } },
+  try {
+    const workOrder = await prisma.workOrder.findUnique({
+      where: { id },
+      include: {
+        vehicle: { include: { customer: true } },
+        user: { select: { id: true, name: true } },
+        services: {
+          include: {
+            service: true,
+            employees: { select: { id: true, name: true, position: true } },
+          },
+        },
+        parts: {
+          include: {
+            inventory: true,
+            employees: { select: { id: true, name: true, position: true } },
+          },
+        },
+        transaction: true,
+        historyItems: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            employees: { select: { id: true, name: true, position: true } },
+          },
         },
       },
-      parts: {
-        include: {
-          inventory: true,
-          employees: { select: { id: true, name: true, position: true } },
-        },
-      },
-      transaction: true,
-      historyItems: {
-        orderBy: { createdAt: "asc" },
-        include: {
-          employees: { select: { id: true, name: true, position: true } },
-        },
-      },
-    },
-  });
+    });
 
-  if (!workOrder) {
-    return NextResponse.json({ error: "Work Order tidak ditemukan" }, { status: 404 });
+    if (!workOrder) {
+      return NextResponse.json({ error: "Work Order tidak ditemukan" }, { status: 404 });
+    }
+
+    return NextResponse.json(workOrder);
+  } catch (error) {
+    const { message, status } = handlePrismaError(error);
+    return NextResponse.json({ error: message }, { status });
   }
-
-  return NextResponse.json(workOrder);
 }
 
 // PATCH /api/work-orders/[id] — Update status or assign employees per item
@@ -61,8 +68,14 @@ export async function PATCH(
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { status, employeeAssignments } = body;
 
+  const parsed = updateWorkOrderSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parseZodError(parsed.error) }, { status: 400 });
+  }
+  const { status, employeeAssignments, estimatedCompletionAt } = parsed.data;
+
+  try {
   const existing = await prisma.workOrder.findUnique({ where: { id } });
   if (!existing) {
     return NextResponse.json({ error: "Work Order tidak ditemukan" }, { status: 404 });
@@ -115,6 +128,10 @@ export async function PATCH(
 
       if (!existing.completedAt) updateData.completedAt = new Date();
     }
+  }
+
+  if (estimatedCompletionAt !== undefined) {
+    updateData.estimatedCompletionAt = estimatedCompletionAt ? new Date(estimatedCompletionAt) : null;
   }
 
   // Handle employee assignments per item (only when PROSES)
@@ -189,5 +206,9 @@ export async function PATCH(
     },
   });
 
-  return NextResponse.json(updated);
+    return NextResponse.json(updated);
+  } catch (error) {
+    const { message, status } = handlePrismaError(error);
+    return NextResponse.json({ error: message }, { status });
+  }
 }

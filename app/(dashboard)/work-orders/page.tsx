@@ -341,11 +341,8 @@ export default function WorkOrdersPage() {
                             {wo.vehicle?.plateNumber || "-"}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">
-                          {[
-                            ...(wo.services?.map(s => s.service.name) || []),
-                            ...(wo.historyItems?.map(h => h.title) || [])
-                          ].join(", ") || "-"}
+                        <td className="px-4 py-3">
+                          <ServiceCategoryBadge category={wo.serviceType} />
                         </td>
                         <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">
                           {[
@@ -460,11 +457,8 @@ export default function WorkOrdersPage() {
                             {wo.vehicle?.plateNumber || "-"}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">
-                          {[
-                            ...(wo.services?.map(s => s.service.name) || []),
-                            ...(wo.historyItems?.map(h => h.title) || [])
-                          ].join(", ") || "-"}
+                        <td className="px-4 py-3">
+                          <ServiceCategoryBadge category={wo.serviceType} />
                         </td>
                         <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">
                           {[

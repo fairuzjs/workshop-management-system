@@ -49,9 +49,32 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.role = (user as any).role;
         token.id = user.id as string;
       }
+
+      // Periodic isActive re-check: verify the user hasn't been deactivated
+      // This runs on every request where the JWT is refreshed
+      if (token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { isActive: true, role: true },
+        });
+
+        if (!dbUser || !dbUser.isActive) {
+          // User has been deactivated — invalidate the token
+          return { ...token, isActive: false };
+        }
+
+        // Keep role in sync in case it was changed by a superadmin
+        token.role = dbUser.role;
+      }
+
       return token;
     },
     async session({ session, token }) {
+      // If user is deactivated, don't populate the session
+      if (token.isActive === false) {
+        return { ...session, user: undefined } as any;
+      }
+
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;

@@ -66,6 +66,11 @@ export default function CreateWorkOrderPage() {
   const [notes, setNotes] = useState("");
   const [vehicleHistory, setVehicleHistory] = useState<{ id: string, name: string, price: number, date: string }[]>([]);
 
+  // ETA Form
+  const [etaType, setEtaType] = useState<"preset" | "manual">("preset");
+  const [etaPreset, setEtaPreset] = useState<number>(60); // Default 60 minutes
+  const [etaManual, setEtaManual] = useState<string>("");
+
   // New customer inline form
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
@@ -76,7 +81,7 @@ export default function CreateWorkOrderPage() {
   useEffect(() => {
     fetch("/api/vehicles?search=" + encodeURIComponent(vehicleSearch))
       .then((r) => r.json())
-      .then(setVehicles);
+      .then((data) => setVehicles(Array.isArray(data) ? data : (data.data || [])));
   }, [vehicleSearch]);
 
   useEffect(() => {
@@ -141,7 +146,8 @@ export default function CreateWorkOrderPage() {
     if (res.ok) {
       const customer = await res.json();
       const vRes = await fetch("/api/vehicles");
-      const vData = await vRes.json();
+      const vJson = await vRes.json();
+      const vData = Array.isArray(vJson) ? vJson : (vJson.data || []);
       setVehicles(vData);
       const newVehicle = vData.find(
         (v: Vehicle) => v.customer.id === customer.id
@@ -163,8 +169,20 @@ export default function CreateWorkOrderPage() {
           vehicleId: selectedVehicle?.id,
           serviceType,
           serviceIds: selectedServiceIds,
-          manualServices: manualServices.map(ms => ({ name: ms.name, price: parseInt(ms.price.replace(/\D/g, "")) || 0 })),
+          manualServices: serviceType === "SERVIS" 
+            ? manualServices.filter(ms => ms.name.trim() !== "").map(ms => ({ name: ms.name, price: parseInt(ms.price.replace(/\D/g, "")) || 0 }))
+            : [],
           notes: notes || null,
+          estimatedCompletionAt: (() => {
+            if (etaType === "preset" && etaPreset > 0) {
+              const d = new Date();
+              d.setMinutes(d.getMinutes() + etaPreset);
+              return d.toISOString();
+            } else if (etaType === "manual" && etaManual) {
+              return new Date(etaManual).toISOString();
+            }
+            return undefined;
+          })(),
         }),
       });
       
@@ -380,34 +398,43 @@ export default function CreateWorkOrderPage() {
 
             {serviceType === "CUCI" ? (
               <div className="space-y-2">
-                {services.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => toggleService(s.id)}
-                    className={cn(
-                      "w-full rounded-xl border p-4 text-left transition-all",
-                      selectedServiceIds.includes(s.id)
-                        ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                        : "border-border hover:border-primary/30 hover:bg-accent/50"
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-foreground">
-                        {s.name}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-semibold text-foreground">
-                          {formatCurrency(s.price)}
+                {services.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border p-8 text-center">
+                    <p className="text-sm font-medium text-foreground">Belum ada layanan cuci</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Silakan tambahkan layanan cuci di menu Pengaturan terlebih dahulu.
+                    </p>
+                  </div>
+                ) : (
+                  services.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => toggleService(s.id)}
+                      className={cn(
+                        "w-full rounded-xl border p-4 text-left transition-all",
+                        selectedServiceIds.includes(s.id)
+                          ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                          : "border-border hover:border-primary/30 hover:bg-accent/50"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground">
+                          {s.name}
                         </span>
-                        {selectedServiceIds.includes(s.id) && (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                            <Check className="h-3 w-3 text-primary-foreground" />
-                          </div>
-                        )}
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-semibold text-foreground">
+                            {formatCurrency(s.price)}
+                          </span>
+                          {selectedServiceIds.includes(s.id) && (
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                              <Check className="h-3 w-3 text-primary-foreground" />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  ))
+                )}
               </div>
             ) : (
               <div className="space-y-3">
@@ -511,6 +538,61 @@ export default function CreateWorkOrderPage() {
                 </div>
               </div>
             )}
+
+            {/* Estimasi Waktu Selesai (ETA) Section */}
+            <div className="pt-6 border-t border-border mt-6">
+              <h3 className="text-sm font-semibold text-foreground mb-3">Estimasi Waktu Selesai</h3>
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input 
+                      type="radio" 
+                      checked={etaType === "preset"} 
+                      onChange={() => setEtaType("preset")} 
+                      className="accent-primary" 
+                    />
+                    Pilih Durasi
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input 
+                      type="radio" 
+                      checked={etaType === "manual"} 
+                      onChange={() => setEtaType("manual")} 
+                      className="accent-primary" 
+                    />
+                    Waktu Spesifik
+                  </label>
+                </div>
+
+                {etaType === "preset" ? (
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                    {[15, 30, 45, 60, 90, 120].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setEtaPreset(mins)}
+                        className={cn(
+                          "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                          etaPreset === mins
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border hover:bg-muted"
+                        )}
+                      >
+                        {mins} mnt
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="w-full sm:w-1/2">
+                    <Input 
+                      type="datetime-local" 
+                      value={etaManual} 
+                      onChange={(e) => setEtaManual(e.target.value)} 
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
 
             {serviceType === "SERVIS" && vehicleHistory.length > 0 && (
               <div className="mt-6 rounded-xl border border-primary/20 bg-primary/5 p-4">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { monthlyClosingQuerySchema, parseZodError } from "@/lib/validations";
+import { logAudit, getClientIp } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -188,6 +189,15 @@ export async function POST(req: NextRequest) {
         status: "CLOSED",
         closedAt: new Date(),
       },
+    });
+
+    logAudit({
+      userId: session.user.id,
+      action: "CLOSE",
+      entity: "MonthlyClosing",
+      entityId: closing.id,
+      details: { month, year, totalRevenue, totalExpense, totalPayroll, profit },
+      ipAddress: getClientIp(req),
     });
 
     return NextResponse.json(closing, { status: 201 });

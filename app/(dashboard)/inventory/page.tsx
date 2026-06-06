@@ -558,11 +558,12 @@ export default function InventoryPage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Supplier (Opsional)</label>
+              <label className="text-sm font-medium text-foreground">Supplier <span className="text-destructive">*</span></label>
               <select
                 value={form.supplierId}
                 onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
                 className="h-11 w-full rounded-xl border border-input bg-background px-4 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                required
               >
                 <option value="">Pilih Supplier</option>
                 {suppliersList.map((sup) => (
@@ -633,13 +634,14 @@ export default function InventoryPage() {
             <Input label="Harga Jual (Rp)" type="text" value={form.price} onChange={(e) => setForm({ ...form, price: formatNumberInput(e.target.value) })} required />
           </div>
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Supplier</label>
+            <label className="text-sm font-medium text-foreground">Supplier <span className="text-destructive">*</span></label>
             <select
               value={form.supplierId}
               onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
               className="h-11 w-full rounded-xl border border-input bg-background px-4 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              required
             >
-              <option value="">Tanpa Supplier</option>
+              <option value="">Pilih Supplier</option>
               {suppliersList.map((sup) => (
                 <option key={sup.id} value={sup.id}>
                   {sup.name}

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { handlePrismaError } from "@/lib/prisma-errors";
+import { checkClosingLock } from "@/lib/closing-lock";
+import { logAudit, getClientIp } from "@/lib/audit";
 
 // POST /api/work-orders/[id]/transaction — Create payment and process items/commissions
 export async function POST(
@@ -47,6 +50,12 @@ export async function POST(
       { error: "Work Order harus berstatus SELESAI sebelum pembayaran" },
       { status: 400 }
     );
+  }
+
+  // Check monthly closing lock — prevent transactions in closed months
+  const lockMsg = await checkClosingLock(new Date());
+  if (lockMsg) {
+    return NextResponse.json({ error: lockMsg }, { status: 403 });
   }
 
   // Calculate total price to ensure integrity
@@ -231,12 +240,22 @@ export async function POST(
       return transaction;
     });
 
+    logAudit({
+      userId: session.user.id,
+      action: "CREATE",
+      entity: "Transaction",
+      entityId: transactionResult.id,
+      details: { workOrderId: id, amount: finalTotalCost, paymentMethod },
+      ipAddress: getClientIp(req),
+    });
+
     return NextResponse.json(transactionResult, { status: 201 });
   } catch (error: any) {
     console.error("Transaction Error:", error);
-    const message = error?.message?.startsWith("Stok ")
-      ? error.message
-      : "Gagal memproses transaksi";
-    return NextResponse.json({ error: message }, { status: 400 });
+    if (error?.message?.startsWith("Stok ")) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    const { message, status } = handlePrismaError(error);
+    return NextResponse.json({ error: message }, { status });
   }
 }

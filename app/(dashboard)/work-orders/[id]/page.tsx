@@ -53,6 +53,7 @@ interface WorkOrderDetail {
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  estimatedCompletionAt: string | null;
   vehicle: {
     plateNumber: string;
     brand: string | null;
@@ -123,6 +124,27 @@ export default function WorkOrderDetailPage() {
   const [showAddHistory, setShowAddHistory] = useState(false);
   const [historyForm, setHistoryForm] = useState({ title: "", description: "", price: "" });
 
+  const [etaEditMode, setEtaEditMode] = useState(false);
+  const [etaInput, setEtaInput] = useState("");
+
+  const handleUpdateEta = async () => {
+    if (!etaInput) return;
+    setUpdating(true);
+    const res = await fetch(`/api/work-orders/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estimatedCompletionAt: new Date(etaInput).toISOString() }),
+    });
+    if (res.ok) {
+      setEtaEditMode(false);
+      await fetchWO();
+    } else {
+      const err = await res.json();
+      alert(err.error);
+    }
+    setUpdating(false);
+  };
+
   const fetchWO = useCallback(async () => {
     try {
       const res = await fetch(`/api/work-orders/${id}`);
@@ -135,6 +157,12 @@ export default function WorkOrderDetailPage() {
       }
       const data = await res.json();
       setWo(data);
+      if (data.estimatedCompletionAt) {
+        const date = new Date(data.estimatedCompletionAt);
+        const tzOffset = date.getTimezoneOffset() * 60000;
+        const localISOTime = (new Date(date.getTime() - tzOffset)).toISOString().slice(0, 16);
+        setEtaInput(localISOTime);
+      }
     } catch (error) {
       console.error("Error fetching work order detail:", error);
     } finally {
@@ -235,7 +263,8 @@ export default function WorkOrderDetailPage() {
 
   const openAddPart = async () => {
     const res = await fetch("/api/inventory");
-    const data = await res.json();
+    const json = await res.json();
+    const data = Array.isArray(json) ? json : (json.data || []);
     setInventoryItems(data.filter((i: InventoryItem) => i.qty > 0));
     setPartForm({ inventoryId: "", qty: "1" });
     setShowAddPart(true);
@@ -605,6 +634,12 @@ export default function WorkOrderDetailPage() {
                           )}
                         </div>
                       </div>
+                      <EmployeeBadges
+                        emps={p.employees || []}
+                        targetType="part"
+                        targetId={p.id}
+                        itemName={p.inventory.name}
+                      />
                     </div>
                   ))}
                 </>
@@ -729,6 +764,47 @@ export default function WorkOrderDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Estimasi Selesai */}
+          {(wo.status !== "SELESAI" || wo.estimatedCompletionAt) && (
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-amber-500" />
+                  <h3 className="font-semibold text-foreground">Estimasi Selesai</h3>
+                </div>
+                {wo.status !== "SELESAI" && !etaEditMode && (
+                  <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setEtaEditMode(true)}>
+                    Ubah
+                  </Button>
+                )}
+              </div>
+              
+              {etaEditMode ? (
+                <div className="space-y-3">
+                  <Input 
+                    type="datetime-local" 
+                    value={etaInput}
+                    onChange={(e) => setEtaInput(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleUpdateEta} loading={updating} className="flex-1">
+                      Simpan
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setEtaEditMode(false)} className="flex-1">
+                      Batal
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-amber-500/10 p-3 border border-amber-500/20 text-center">
+                  <p className="font-mono text-sm font-bold text-amber-700 dark:text-amber-400">
+                    {wo.estimatedCompletionAt ? formatDateTime(wo.estimatedCompletionAt) : "Belum diatur"}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Timeline */}
           <div className="rounded-2xl border border-border bg-card p-5">

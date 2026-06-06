@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateTrackingToken } from "@/lib/utils";
+import { createWorkOrderSchema, parseZodError } from "@/lib/validations";
+import { handlePrismaError } from "@/lib/prisma-errors";
 
 // GET /api/work-orders — List work orders
 export async function GET(req: NextRequest) {
@@ -78,20 +80,11 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const {
-    vehicleId,
-    serviceType,
-    serviceIds,
-    manualServices,
-    notes,
-  } = body;
-
-  if (!vehicleId || !serviceType) {
-    return NextResponse.json(
-      { error: "Kendaraan dan tipe layanan wajib dipilih" },
-      { status: 400 }
-    );
+  const parsed = createWorkOrderSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parseZodError(parsed.error) }, { status: 400 });
   }
+  const { vehicleId, serviceType, serviceIds, manualServices, notes, estimatedCompletionAt } = parsed.data;
 
   if (serviceType === "CUCI" && (!serviceIds || serviceIds.length === 0)) {
     return NextResponse.json(
@@ -113,10 +106,10 @@ export async function POST(req: NextRequest) {
 
     if (serviceType === "CUCI") {
       services = await prisma.service.findMany({
-        where: { id: { in: serviceIds } },
+        where: { id: { in: serviceIds || [] } },
       });
 
-      if (services.length !== serviceIds.length) {
+      if (services.length !== (serviceIds || []).length) {
         return NextResponse.json(
           { error: "Beberapa layanan tidak ditemukan" },
           { status: 400 }
@@ -133,7 +126,7 @@ export async function POST(req: NextRequest) {
           where: { id: { in: serviceIds } },
         });
       }
-      totalServiceCost = manualServices.reduce(
+      totalServiceCost = (manualServices || []).reduce(
         (sum: number, s: any) => sum + Number(s.price || 0),
         0
       ) + services.reduce((sum, s) => sum + Number(s.price), 0);
@@ -162,6 +155,7 @@ export async function POST(req: NextRequest) {
           totalCost: totalServiceCost,
           notes: notes || null,
           status: "ANTRI",
+          estimatedCompletionAt: estimatedCompletionAt ? new Date(estimatedCompletionAt) : null,
         },
       });
 
@@ -181,7 +175,7 @@ export async function POST(req: NextRequest) {
       } else if (serviceType === "SERVIS") {
         // Create manual history items
         await Promise.all(
-          manualServices.map((ms: any) =>
+          (manualServices || []).map((ms: any) =>
             tx.workOrderHistoryItem.create({
               data: {
                 workOrderId: wo.id,
@@ -223,6 +217,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(fullWorkOrder, { status: 201 });
   } catch (error: any) {
     console.error("Failed to create work order:", error);
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+    const { message, status } = handlePrismaError(error);
+    return NextResponse.json({ error: message }, { status });
   }
 }

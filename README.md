@@ -1,182 +1,114 @@
-# Workshop Management System 🛠️🚘
+# Workshop Management System
 
-Aplikasi berbasis web yang komprehensif untuk mengelola operasional bengkel secara menyeluruh. Sistem ini mencakup manajemen inventaris (*spare parts*), Work Order (WO), pencatatan transaksi kasir (*direct sale* & *work order service*), sistem komisi mekanik, pelaporan keuangan (*profit & loss*, pengeluaran, payroll), serta portal pelacakan status perbaikan kendaraan oleh pelanggan secara *real-time*.
+Sistem manajemen bengkel yang komprehensif, aman, dan siap produksi, dirancang untuk mengelola pelanggan, kendaraan, inventory (stok), pesanan kerja (work orders), komisi karyawan, serta laporan keuangan dengan integritas data tingkat tinggi.
 
----
+## 🌟 Fitur Utama
 
-## 📌 Daftar Isi
-1. [Fitur Utama](#-fitur-utama)
-2. [Arsitektur & Alur Bisnis (Flowchart)](#-arsitektur--alur-bisnis-flowchart)
-3. [Teknologi yang Digunakan](#-teknologi-yang-digunakan)
-4. [Matriks Peran & Hak Akses (RBAC)](#-matriks-peran--hak-akses-rbac)
-5. [Instalasi & Pengaturan Lokal](#-instalasi--pengaturan-lokal)
-6. [Skrip Utilitas Database (Prisma)](#-skrip-utilitas-database-prisma)
-7. [Fitur Keamanan & Integritas Data](#-fitur-keamanan--integritas-data)
+- **Work Order Management:** Pembuatan dan pelacakan pesanan kerja dengan status real-time.
+- **Atomic Inventory Control:** Penyesuaian stok yang sepenuhnya atomik untuk mencegah *race conditions*, terintegrasi dengan otomatisasi pengurangan stok saat Work Order selesai.
+- **Financial Period Locking:** Kunci bulanan untuk mencegah modifikasi data keuangan secara retroaktif (Closing Buku).
+- **Public Tracking Portal:** Portal privasi-pertama bagi pelanggan untuk melacak status servis kendaraan melalui token khusus (tanpa detail harga untuk alasan keamanan).
+- **Comprehensive Audit Trail:** Fire-and-forget Audit Log untuk melacak semua operasi kritis (Update Transaksi, Delete Expense, Closing Bulanan, dll.) tanpa memperlambat response time.
+- **Robust Validation:** Validasi menyeluruh pada frontend dan backend menggunakan Zod.
+- **Secure Authentication:** Validasi session aktif secara real-time yang langsung menolak token dari karyawan yang baru saja dinonaktifkan.
+- **Centralized Error Handling:** Pemetaan error Prisma (Unique Constraint, Foreign Key, dll) ke status HTTP yang ramah client.
 
----
+## 🚀 Teknologi
 
-## 🚀 Fitur Utama
+- **Framework:** Next.js 14 (App Router)
+- **Language:** TypeScript
+- **Database ORM:** Prisma
+- **Database Engine:** PostgreSQL
+- **Authentication:** NextAuth.js (v5)
+- **Validation:** Zod
+- **Testing:** Vitest
+- **Styling:** Tailwind CSS + Radix UI
 
-- **Dashboard Real-time**: Grafik analitik keuangan bulanan (pendapatan, HPP/COGS, pengeluaran, laba kotor, & laba bersih) dengan breakdown pengeluaran dan status WO aktif.
-- **Manajemen Work Order (Perintah Kerja)**: Pencatatan perbaikan kendaraan mulai dari status `PENDING`, `IN_PROGRESS` (dikerjakan mekanik), `COMPLETED` (selesai diperbaiki), hingga `PAID` (lunas dibayar).
-- **Potong Stok Otomatis**: Saat Work Order dinyatakan selesai (`COMPLETED`), sistem secara otomatis memotong stok barang di gudang.
-- **Sistem Komisi Mekanik**: Pembagian komisi jasa perbaikan secara adil jika satu tugas jasa dikerjakan oleh beberapa mekanik sekaligus (*split commission*).
-- **Direct Sale (Penjualan Langsung)**: Kasir dapat melayani penjualan suku cadang secara langsung kepada pelanggan tanpa harus melalui pembuatan Work Order perbaikan.
-- **Financial & Monthly Closing**: Penguncian data transaksi keuangan bulanan. Setelah closing dilakukan, semua data pengeluaran (*expense*), transaksi kasir, payroll, dan pendapatan tidak dapat diedit atau dihapus oleh Admin biasa untuk menjaga keaslian laporan.
-- **Public Vehicle Tracking**: Halaman khusus untuk pelanggan guna memantau progres perbaikan kendaraannya secara aman menggunakan kode token unik dan validasi nomor telepon.
-
----
-
-## 📊 Arsitektur & Alur Bisnis (Flowchart)
-
-Sistem ini memiliki alur operasional dan finansial terintegrasi seperti yang digambarkan pada diagram alur di bawah ini:
+## 📋 Alur Sistem (Flowchart)
 
 ```mermaid
-flowchart TD
-    %% Style Definitions
-    classDef superadmin fill:#ffccd5,stroke:#ff4d6d,stroke-width:2px;
-    classDef admin fill:#ffe5ec,stroke:#ff758f,stroke-width:2px;
-    classDef cashier fill:#e2ece9,stroke:#2a9d8f,stroke-width:2px;
-    classDef mechanic fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px;
-    classDef portal fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px;
-
-    %% Nodes & Flow
-    subgraph Registrasi & Work Order
-        A[Pelanggan Datang] --> B[Registrasi Kendaraan & Pelanggan]:::admin
-        B --> C[Pembuatan Work Order baru - Status: PENDING]:::admin
-    end
-
-    subgraph Pengerjaan & Komisi
-        C --> D[Assign Mekanik & Masukkan Sparepart]:::admin
-        D -->|Status: IN_PROGRESS| E[Mekanik Melakukan Perbaikan]:::mechanic
-        E -->|Status: COMPLETED| F[Potong Stok Suku Cadang & Hitung Komisi Mekanik]:::mechanic
-    end
-
-    subgraph Kasir & Transaksi
-        F --> G[Kasir Memeriksa Invoice & Melakukan Pembayaran]:::cashier
-        H[Penjualan Langsung / Direct Sale Sparepart]:::cashier --> G
-        G -->|Status: PAID| I[Buat Transaksi Keuangan & Simpan Riwayat Kas]:::cashier
-    end
-
-    subgraph Pelacakan Publik
-        C -.-> P[Kirim Token Pelacakan via WA/Nota]
-        P -.-> Q[Pelanggan Akses Portal Tracking]:::portal
-        Q -->|Input Token & Verifikasi HP| R[Cek Progres Kendaraan Real-time]:::portal
-    end
-
-    subgraph Finansial & Laporan
-        I --> S[Dashboard Analitik & Laporan Laba/Rugi]:::superadmin
-        S --> T[Sistem Penggajian / Payroll Bulanan]:::superadmin
-        S --> U[Monthly Closing / Penutupan Buku Bulanan]:::superadmin
-        U -->|Kunci Data Transaksi & Expense| V[Data Terkunci: Read-Only]:::admin
-    end
+graph TD
+    %% Entitas Utama
+    A[Pelanggan Baru/Lama] --> B(Registrasi Kendaraan)
+    B --> C{Buat Work Order}
+    
+    %% Alur Work Order
+    C -->|Pilih Layanan/Cuci| D[Work Order Dibuat]
+    C -->|Pilih Sparepart| D
+    D --> E[Proses Pengerjaan]
+    E --> F[Status Selesai]
+    
+    %% Alur Transaksi & Inventory
+    F --> G{Pembayaran Kasir}
+    G -->|Berhasil| H[Transaksi Disimpan]
+    H --> I[Pengurangan Stok Otomatis & Atomik]
+    H --> J[Perhitungan Komisi Karyawan]
+    
+    %% Public Tracking
+    D -.->|Tracking Token| K[Pelanggan Cek Status Online]
+    E -.-> K
+    F -.-> K
+    
+    %% Audit & Financials
+    H --> L[Pencatatan Audit Log]
+    M(Pengeluaran/Expense) --> L
+    L --> N[Laporan Keuangan]
+    N --> O[Closing Bulanan]
+    O -->|Mengunci Data Keuangan| P((Data Aman & Terkunci))
+    
+    classDef default fill:#1f2937,stroke:#3b82f6,stroke-width:2px,color:#f9fafb;
+    classDef action fill:#0ea5e9,stroke:#0284c7,color:#fff;
+    classDef secure fill:#10b981,stroke:#047857,color:#fff;
+    
+    class C,G,O action;
+    class I,L,P secure;
 ```
+
+## 🛡️ Standar Keamanan & Integritas (Production-Ready)
+
+Aplikasi ini telah diperkuat (hardened) untuk memenuhi standar *production-ready*:
+
+1. **Atomic Stock Update:** Menggunakan Prisma `$transaction` dengan `{ increment/decrement }` pada level database untuk mematikan risiko *Race Conditions* saat kasir memproses banyak pesanan sekaligus.
+2. **Duplicate Plate Protection:** Validasi *case-insensitive* berlapis (Zod + Prisma Unique Constraint + Custom Error Mapping) mencegah satu kendaraan didaftarkan dua kali.
+3. **Monthly Closing Lock:** Segala bentuk *Create/Update/Delete* terhadap Data Transaksi, Work Order, dan Expense akan di-block jika tanggal data masuk ke dalam bulan yang telah berstatus `CLOSED`.
+4. **Active Session Validation:** `auth.ts` melakukan pengecekan `isActive` pada database di level session JWT. Jika admin menonaktifkan akun kasir/mekanik, akses mereka langsung terpotong saat itu juga.
+5. **Data Privacy Tracking:** API Pelacakan Publik tidak pernah mengekspos data sensitif (Total Harga, Harga Satuan, Nama Karyawan). Pelanggan hanya melihat progress dan layanan apa yang sedang dikerjakan.
+6. **Graceful Error Handling:** Memiliki `error.tsx` Global, `not-found.tsx`, dan Error Boundary Dashboard untuk mencegah *White Screen of Death*.
+
+## 🚦 Memulai Proyek Lokal
+
+1. **Install Dependencies**
+   ```bash
+   npm install
+   ```
+
+2. **Setup Environment Variables**
+   Buat file `.env` berdasarkan `.env.example` dan masukkan URL Database PostgreSQL serta Auth Secret Anda.
+
+3. **Database Migration & Sync**
+   ```bash
+   npx prisma generate
+   npx prisma db push
+   ```
+
+4. **Jalankan Development Server**
+   ```bash
+   npm run dev
+   ```
+
+5. **Jalankan Testing**
+   ```bash
+   npx vitest run
+   ```
+
+## 📄 Struktur Direktori Penting
+
+- `/app/api`: Semua endpoint backend, terproteksi oleh auth dan error handler.
+- `/lib/validations.ts`: Skema *Zod* terpusat (Single Source of Truth) untuk validasi payload.
+- `/lib/prisma-errors.ts`: *Interceptor* yang menerjemahkan error internal database menjadi HTTP error yang aman.
+- `/lib/closing-lock.ts`: Engine *financial lock* bulanan.
+- `/lib/audit.ts`: Modul pencatatan Audit Trail (Fire-and-Forget pattern).
+- `/__tests__`: Berisi pengujian logika krusial (*Validations*, *Closing Lock*, *Prisma Error*).
 
 ---
-
-## 🛠️ Teknologi yang Digunakan
-
-*   **Framework Utama**: [Next.js 15](https://nextjs.org/) (menggunakan App Router & TypeScript)
-*   **Database ORM**: [Prisma ORM](https://www.prisma.io/)
-*   **Database**: PostgreSQL
-*   **Autentikasi**: [NextAuth.js](https://next-auth.js.org/)
-*   **Validasi Data**: [Zod Schema Validation](https://zod.dev/)
-*   **Keamanan Rute**: Middleware Kustom berbasis Next.js Proxy (`proxy.ts`)
-*   **Desain & UI**: TailwindCSS, Lucide Icons, dan Shadcn/UI-based components.
-
----
-
-## 👥 Matriks Peran & Hak Akses (RBAC)
-
-Aplikasi ini menerapkan pembagian hak akses (*Role-Based Access Control*) yang ketat:
-
-| Fitur / Modul | SUPERADMIN | ADMIN | CASHIER | Keterangan / Proteksi Keamanan |
-| :--- | :---: | :---: | :---: | :--- |
-| **Dashboard Utama** | **Ya** | **Ya** | **Ya** | Tampilan data analitik & grafik performa bengkel |
-| **Manajemen User / Karyawan** | **Ya** | Tidak | Tidak | Mengelola hak akses akun, status `isActive`, & roles |
-| **Manajemen Suplier & Pelanggan** | **Ya** | **Ya** | Tidak | Pendaftaran data kontak & suplier suku cadang |
-| **Manajemen Kendaraan (Pelat Nomor)**| **Ya** | **Ya** | Tidak | Pelat nomor divalidasi unik (*case-insensitive*) |
-| **Transaksi & Work Order** | **Ya** | **Ya** | **Ya** | Hanya Kasir/Admin/Superadmin yang bisa memproses |
-| **Detail Gaji / Komisi Individu** | **Ya** | Tidak | Tidak | Admin biasa hanya melihat total agregat gaji bulanan |
-| **Monthly Closing (Tutup Buku)** | **Ya** | **Ya** | Tidak | Mengunci edit/hapus transaksi bulan terpilih |
-| **Koreksi Data Terkunci (Closing)**| **Ya** | Tidak | Tidak | Superadmin dapat membuka kunci (re-open) jika dibutuhkan |
-
----
-
-## 💻 Instalasi & Pengaturan Lokal
-
-Ikuti langkah-langkah di bawah ini untuk menjalankan project di komputer lokal Anda:
-
-### 1. Prasyarat (*Prerequisites*)
-Pastikan Anda sudah menginstal:
-*   [Node.js](https://nodejs.org/) (versi LTS terbaru rekomendasikan v18 atau v20)
-*   [PostgreSQL Database](https://www.postgresql.org/) yang sudah berjalan aktif.
-
-### 2. Kloning Project & Pasang Dependensi
-```bash
-git clone https://github.com/fairuzjs/workshop-management-system.git
-cd workshop-management-system
-npm install
-```
-
-### 3. Konfigurasi Environment (`.env`)
-Buat file bernama `.env` di direktori root project, lalu isi variabel-variabel berikut sesuai dengan kredensial PostgreSQL Anda:
-```env
-# Koneksi Database PostgreSQL
-DATABASE_URL="postgresql://username:password@localhost:5432/workshop_management_db?schema=public"
-
-# Konfigurasi NextAuth (Keamanan Sesi)
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="buat-kunci-rahasia-random-anda-di-sini-minimal-32-karakter"
-```
-
-### 4. Migrasi Database & Seeding Data
-Jalankan migrasi database menggunakan Prisma untuk menyusun tabel dan memasukkan data awal (*seed* seperti akun superadmin default):
-```bash
-# Generate Prisma Client
-npx prisma generate
-
-# Jalankan Migrasi database
-npx prisma migrate dev
-
-# Lakukan Seeding data dasar
-npx prisma db seed
-```
-
-*Akun Superadmin default yang dibuat setelah seeding:*
-*   **Email**: `superadmin@workshop.com`
-*   **Password**: `password123`
-
-### 5. Jalankan Development Server
-```bash
-npm run dev
-```
-Buka browser Anda dan akses halaman di `http://localhost:3000`.
-
----
-
-## 🗃️ Skrip Utilitas Database (Prisma)
-
-Project ini dilengkapi dengan skrip utility di bawah folder [prisma/scripts/](file:///d:/Project/workshop-management/prisma/scripts) untuk membantu tugas administrasi basis data secara mandiri:
-
-*   **`check-duplicate-plates.ts`**: Mendeteksi jika ada pelat nomor kendaraan yang ganda sebelum mengaktifkan constraint unik.
-*   **`clean-duplicate-inventory.ts`**: Membersihkan dan menggabungkan item suku cadang dengan nama yang sama untuk merapikan database inventaris.
-*   **`clean-duplicate-employees.ts`**: Menghapus data duplikat karyawan untuk menghindari kesalahan sistem payroll.
-*   **`clear-dummy.ts`**: Membersihkan data dummy/transaksi uji coba dari database secara cepat saat akan meluncurkan versi produksi.
-
-Jalankan skrip menggunakan `npx ts-node`:
-```bash
-npx ts-node prisma/scripts/check-duplicate-plates.ts
-```
-
----
-
-## 🛡️ Fitur Keamanan & Integritas Data
-
-Sistem ini didesain dengan beberapa lapisan pengaman tingkat lanjut untuk mencegah kebocoran data dan manipulasi laporan:
-
-1.  **Proxy Middleware (`proxy.ts`)**: Mencegah akses langsung ke halaman internal bengkel sebelum user berhasil masuk (*authenticated*). User yang tidak aktif (`isActive: false`) akan otomatis tertendang keluar dan tidak dapat login kembali.
-2.  **Rate Limiting di Tracking Route**: Membatasi percobaan pelacakan status WO maksimum **5 request per menit** per IP address untuk mencegah serangan brute force token tracking.
-3.  **Sensor Nomor Telepon (Phone Masking)**: Admin biasa tidak dapat melihat nomor telepon pelanggan secara utuh pada layar untuk menjaga privasi (*Customer Data Protection*).
-4.  **Zod API Validation**: Semua *payload API request* (seperti pembuatan supplier, customer, & transaksi) wajib melewati validasi skema tipe data Zod di sisi backend sebelum diproses oleh database PostgreSQL.
-5.  **Monthly Closing Lock Engine**: Sistem secara dinamis memblokir permintaan `PUT` dan `DELETE` transaksi atau expense jika tanggal dokumen berada pada bulan yang statusnya sudah dinyatakan ditutup (*closed*).
+*Dibuat untuk Manajemen Bengkel Modern dengan Fokus pada Integritas dan Keamanan Data.*
